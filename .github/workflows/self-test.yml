@@ -112,15 +112,17 @@ jobs:
   # gitlab/templates/all.yml as a GitLab pipeline (gitlab-ci-local, docker
   # executor) with the images the template pins.
   gitlab:
-    needs: probe
-    if: needs.probe.outputs.edge == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Run the GitLab template as a pipeline
+      - name: Build the bundle image from this commit
+        run: docker build -f images/all/Dockerfile -t openctem-ci:selftest .
+      - name: Run the GitLab template as a pipeline (every job on that image)
+        env:
+          OPENCTEM_TEST_IMAGE: openctem-ci:selftest
         run: bash scripts/gitlab-local-test.sh
 
   reusable:
