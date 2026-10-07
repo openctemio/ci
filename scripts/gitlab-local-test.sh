@@ -29,6 +29,7 @@ openctem-gate:
   allow_failure: true
 EOF
 git -C "$work" init -q -b main
+git -C "$work" remote add origin https://gitlab.com/openctemio/ci-fixture.git
 git -C "$work" -c user.name=test -c user.email=test@example.invalid add -A
 git -C "$work" -c user.name=test -c user.email=test@example.invalid commit -q -m fixture
 

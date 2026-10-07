@@ -92,3 +92,13 @@ func TestGeneric(t *testing.T) {
 		t.Fatal("an empty environment is not CI")
 	}
 }
+
+// A local GitLab runner (GITLAB_CI=false) is still described from the
+// GitLab variables.
+func TestGitLabLocalRunner(t *testing.T) {
+	i := Detect(envOf(map[string]string{"GITLAB_CI": "false", "CI_PROJECT_PATH": "g/p", "CI_COMMIT_SHA": "abc",
+		"CI_COMMIT_BRANCH": "main"}))
+	if i.Provider != GitLab || i.Repository != "gitlab.com/g/p" || i.Commit != "abc" {
+		t.Fatalf("%+v", i)
+	}
+}
