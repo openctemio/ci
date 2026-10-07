@@ -60,7 +60,10 @@ func Detect(getenv func(string) string) Info {
 	switch {
 	case getenv("GITHUB_ACTIONS") == "true":
 		return github(getenv)
-	case getenv("GITLAB_CI") == "true":
+	// A local GitLab runner (gitlab-ci-local) sets GITLAB_CI=false but the
+	// same predefined variables: describe the job from them. Only the
+	// platform client requires GITLAB_CI=true (an ID token).
+	case getenv("GITLAB_CI") == "true" || (getenv("CI_PROJECT_PATH") != "" && getenv("CI_COMMIT_SHA") != ""):
 		return gitlab(getenv)
 	}
 	return generic(getenv)
