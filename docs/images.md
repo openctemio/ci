@@ -28,7 +28,8 @@ verify the signature and run exactly that digest.
   `pip --require-hashes` from `images/semgrep/requirements.txt`.
 - **Automatic bumps.** Dependabot proposes tool, base-image, Python, Go and
   action updates weekly; each PR builds and smoke-tests every image.
-- **Signed.** Every published index and platform image is signed with cosign,
+- **Signed.** Every published index and platform image is signed with cosign
+  (verify with cosign v3; older versions report no signatures),
   keyless: the certificate names `.github/workflows/images.yml` of
   `openctemio/ci` at `refs/heads/main` or a `v*` tag.
 

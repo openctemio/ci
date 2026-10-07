@@ -1,0 +1,57 @@
+# OpenCTEM CI for GitLab: static analysis (semgrep), capability sast.
+#
+#   include:
+#     - remote: https://raw.githubusercontent.com/openctemio/ci/v1/gitlab/templates/sast.yml
+#   variables:
+#     OPENCTEM_API_URL: https://openctem.example.com
+#     OPENCTEM_TENANT_ID: <organization id>
+#
+# Reporting uses the job's OIDC identity (id_tokens, audience
+# openctem:tenant:$OPENCTEM_TENANT_ID): no API key is stored in GitLab. Without
+# OPENCTEM_TENANT_ID, or in a merge request from a fork, the jobs scan only:
+# the GitLab security reports (merge request widget, pipeline security tab),
+# SARIF and the local gate (OPENCTEM_FAIL_ON).
+#
+# Images are pinned by digest (scripts/pin-images.sh verifies each signature
+# before pinning). Exit codes: 0 pass, 1 the gate failed, 2 a scan cannot be
+# trusted. To report without failing the pipeline while findings are
+# triaged, set on the job:  allow_failure: { exit_codes: [1] }
+# Design: https://github.com/openctemio/ci/blob/main/docs/gitlab.md
+
+variables:
+  OPENCTEM_API_URL: ""
+  OPENCTEM_TENANT_ID: ""
+  OPENCTEM_FAIL_ON: ""
+
+openctem-sast:
+  stage: test
+  image:
+    name: ghcr.io/openctemio/ci-semgrep:edge@sha256:fe80bd83d24d6d1fb8f1c6902ca2ed678830a94509d9cfb794509380a96c462c
+    entrypoint: [""]
+  id_tokens:
+    OPENCTEM_ID_TOKEN:
+      aud: openctem:tenant:$OPENCTEM_TENANT_ID
+  script:
+    - >-
+      openctem-ci scan --capability sast
+      --gitlab-report gl-sast-report.json
+      --sarif openctem-sast.sarif
+      --status openctem-status/sast.status.json
+      $OPENCTEM_SCAN_ARGS
+  artifacts:
+    when: always
+    expire_in: 1 week
+    reports:
+      sast: gl-sast-report.json
+    paths:
+      - gl-sast-report.json
+      - openctem-sast.sarif
+      - openctem-status/
+  rules:
+    - if: $OPENCTEM_DISABLED == "true"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # A branch with an open merge request runs in the merge request pipeline.
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
