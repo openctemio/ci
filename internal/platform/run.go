@@ -1,7 +1,8 @@
 // Package platform talks to the OpenCTEM CI run API with the CI job's own
-// identity: the job's OIDC token (GitHub Actions, GitLab CI) is exchanged
-// for a short-lived run token bound to one run on one repository. No API
-// key is stored in CI.
+// identity: the job's OIDC token (GitHub Actions, GitLab CI, Azure
+// Pipelines, Bitbucket Pipelines, CircleCI, Jenkins with its OpenID Connect
+// provider plugin) is exchanged for a short-lived run token bound to one run
+// on one repository. No API key is stored in CI.
 //
 // The run token never leaves this package: it is not printed, not logged
 // and not part of any error. The platform derives the tenant's repository,
@@ -35,8 +36,10 @@ const (
 	EnvTenantID = "OPENCTEM_TENANT_ID"
 	// EnvAudience overrides the audience (default openctem:tenant:<id>).
 	EnvAudience = "OPENCTEM_OIDC_AUDIENCE"
-	// EnvIDTokenVar names the GitLab id_tokens variable (default
-	// OPENCTEM_ID_TOKEN).
+	// EnvIDTokenVar names the variable that holds the job's token on GitLab
+	// (its id_tokens variable), CircleCI (minted with circleci run oidc get)
+	// and Jenkins (bound from the plugin's credential); default
+	// OPENCTEM_ID_TOKEN.
 	EnvIDTokenVar = "OPENCTEM_ID_TOKEN_VAR" // #nosec G101 -- a variable name, not a credential
 	// DefaultIDTokenVar is the GitLab id_tokens variable read by default.
 	DefaultIDTokenVar = "OPENCTEM_ID_TOKEN" // #nosec G101 -- a variable name, not a credential
@@ -44,9 +47,23 @@ const (
 
 // Providers an OIDC token can come from.
 const (
-	ProviderGitHub = "github"
-	ProviderGitLab = "gitlab"
+	ProviderGitHub      = "github"
+	ProviderGitLab      = "gitlab"
+	ProviderAzureDevOps = "azure_devops"
+	ProviderBitbucket   = "bitbucket"
+	ProviderCircleCI    = "circleci"
+	ProviderJenkins     = "jenkins"
 )
+
+// azureOIDCAPIVersion is the Azure DevOps OIDC token API version.
+const azureOIDCAPIVersion = "7.1-preview.1"
+
+// canMint reports whether the client can ask the provider for a fresh token
+// (and so renew an expiring run token); elsewhere the job holds one token,
+// good for one exchange.
+func canMint(provider string) bool {
+	return provider == ProviderGitHub || provider == ProviderAzureDevOps
+}
 
 // ErrNoOIDC: the job offers no OIDC token (no tenant set, GitHub Actions
 // without id-token: write, no GitLab id_tokens variable, another CI system).
@@ -61,7 +78,8 @@ var ErrNoAggregate = errors.New("the platform does not support aggregate CI runs
 // tokenPrefix is the prefix of every run token the platform issues.
 const tokenPrefix = "octci_"
 
-// renewBefore re-exchanges (GitHub only) when the run token expires sooner.
+// renewBefore re-exchanges (GitHub and Azure, which mint a token on request)
+// when the run token expires sooner.
 const renewBefore = 2 * time.Minute
 
 // Response bounds.
@@ -129,7 +147,37 @@ func DetectOIDC(cfg Config) (string, bool) {
 	if cfg.Getenv("GITLAB_CI") == "true" && cfg.Getenv(cfg.IDTokenVar) != "" {
 		return ProviderGitLab, true
 	}
+	if strings.EqualFold(cfg.Getenv("TF_BUILD"), "true") && cfg.Getenv("SYSTEM_OIDCREQUESTURI") != "" &&
+		cfg.Getenv("SYSTEM_ACCESSTOKEN") != "" {
+		return ProviderAzureDevOps, true
+	}
+	if cfg.Getenv("BITBUCKET_BUILD_NUMBER") != "" && cfg.Getenv("BITBUCKET_STEP_OIDC_TOKEN") != "" {
+		return ProviderBitbucket, true
+	}
+	if cfg.Getenv("CIRCLECI") == "true" && cfg.Getenv(cfg.IDTokenVar) != "" {
+		return ProviderCircleCI, true
+	}
+	if cfg.Getenv("JENKINS_URL") != "" && cfg.Getenv(cfg.IDTokenVar) != "" {
+		return ProviderJenkins, true
+	}
 	return "", false
+}
+
+// hints are what the job reports about itself for what its provider's token
+// does not sign: the commit (CircleCI, and Bitbucket or Jenkins tokens
+// without one) and the repository name (Bitbucket). The platform uses them
+// only then, and marks such a commit unverified.
+func (r *Run) hints() map[string]string {
+	g := r.cfg.Getenv
+	switch r.provider {
+	case ProviderBitbucket:
+		return map[string]string{"commit_sha": g("BITBUCKET_COMMIT"), "repository": g("BITBUCKET_REPO_FULL_NAME")}
+	case ProviderCircleCI:
+		return map[string]string{"commit_sha": g("CIRCLE_SHA1")}
+	case ProviderJenkins:
+		return map[string]string{"commit_sha": g("GIT_COMMIT")}
+	}
+	return nil
 }
 
 // Run is one CI run on the platform. The run token is obtained at the
@@ -144,7 +192,9 @@ type Run struct {
 	token     string
 	expiresAt time.Time
 	info      Info
-	usedGL    bool
+	// usedToken: the job's single token (every provider but GitHub and
+	// Azure) was exchanged.
+	usedToken bool
 }
 
 // Info is what the platform says about the run.
@@ -219,19 +269,24 @@ func (r *Run) bearer(ctx context.Context) (string, error) {
 	if r.token != "" && time.Until(r.expiresAt) > renewBefore {
 		return r.token, nil
 	}
-	if r.token != "" && r.provider != ProviderGitHub {
-		// A GitLab ID token is good for one exchange: keep the run token
+	if r.token != "" && !canMint(r.provider) {
+		// The job's token is good for one exchange: keep the run token
 		// until it expires.
 		if time.Now().Before(r.expiresAt) {
 			return r.token, nil
 		}
-		return "", errors.New("the CI run token expired and GitLab offers no second OIDC token")
+		return "", fmt.Errorf("the CI run token expired and %s offers no second OIDC token to this job", r.provider)
 	}
 	idToken, err := r.idToken(ctx)
 	if err != nil {
 		return "", err
 	}
 	body := map[string]any{"tenant_id": r.cfg.TenantID, "id_token": idToken}
+	for k, v := range r.hints() {
+		if v = strings.TrimSpace(v); v != "" {
+			body[k] = v
+		}
+	}
 	if r.runID != "" {
 		body["run_id"] = r.runID
 	} else if r.cfg.Aggregate {
@@ -297,14 +352,56 @@ func (r *Run) idToken(ctx context.Context) (string, error) {
 			return "", errors.New("request the GitHub OIDC token: no token in the response")
 		}
 		return out.Value, nil
-	case ProviderGitLab:
-		if r.usedGL {
-			return "", errors.New("the GitLab ID token was already exchanged")
+	case ProviderAzureDevOps:
+		return r.azureToken(ctx)
+	case ProviderGitLab, ProviderBitbucket, ProviderCircleCI, ProviderJenkins:
+		if r.usedToken {
+			return "", fmt.Errorf("the %s OIDC token was already exchanged", r.provider)
 		}
-		r.usedGL = true
+		r.usedToken = true
+		if r.provider == ProviderBitbucket {
+			return r.cfg.Getenv("BITBUCKET_STEP_OIDC_TOKEN"), nil
+		}
 		return r.cfg.Getenv(r.cfg.IDTokenVar), nil
 	}
 	return "", ErrNoOIDC
+}
+
+// azureToken asks Azure DevOps for the job's pipeline token: the job's
+// System.OidcRequestUri, authenticated with its own System.AccessToken
+// (mapped into the step as SYSTEM_ACCESSTOKEN), without a service
+// connection. Neither token is printed.
+func (r *Run) azureToken(ctx context.Context) (string, error) {
+	u, err := url.Parse(r.cfg.Getenv("SYSTEM_OIDCREQUESTURI"))
+	if err != nil || u.Host == "" || u.Scheme != "https" {
+		return "", errors.New("SYSTEM_OIDCREQUESTURI is not an https URL")
+	}
+	q := u.Query()
+	q.Set("api-version", azureOIDCAPIVersion)
+	u.RawQuery = q.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), strings.NewReader("{}"))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+r.cfg.Getenv("SYSTEM_ACCESSTOKEN"))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := r.cfg.HTTPClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request the Azure Pipelines OIDC token: %w", scrubURL(err))
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxErrBody))
+		return "", fmt.Errorf("request the Azure Pipelines OIDC token: status %d (is SYSTEM_ACCESSTOKEN mapped from $(System.AccessToken)?)", resp.StatusCode)
+	}
+	var out struct {
+		OIDCToken string `json:"oidcToken"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxTokenBody)).Decode(&out); err != nil || out.OIDCToken == "" {
+		return "", errors.New("request the Azure Pipelines OIDC token: no token in the response")
+	}
+	return out.OIDCToken, nil
 }
 
 // StatusError is an HTTP error from the platform: the status and the

@@ -1,6 +1,14 @@
 # OpenCTEM CI scanning on Azure Pipelines: one parallel job per capability,
-# then one gate. Scan only (SARIF and the local gate); see
-# examples/README.md for reporting to OpenCTEM.
+# then one gate, reporting to OpenCTEM with the job's own OIDC identity.
+#
+# Fill in OPENCTEM_API_URL and OPENCTEM_TENANT_ID below (neither is a
+# secret) and add an Azure Pipelines CI trust in OpenCTEM for your Azure
+# DevOps organization id (docs/other-ci.md). With OPENCTEM_TENANT_ID empty
+# the jobs scan only (SARIF and the local gate).
+#
+# Each job asks Azure DevOps for a pipeline OIDC token ($(System.OidcRequestUri),
+# no service connection) with its own $(System.AccessToken), mapped into the
+# step below. No stored secret.
 #
 # Images are pinned by digest (scripts/pin-images.sh rewrites them on a release).
 
@@ -14,6 +22,17 @@ pr:
 variables:
   OPENCTEM_IMAGE: ghcr.io/openctemio/ci:edge@sha256:2887311f4510e20e0cac51be11802bcbb97bdc66dc16274974ef88871e5016ad
   OPENCTEM_FAIL_ON: high
+  OPENCTEM_API_URL:  # e.g. https://openctem.example.com
+  OPENCTEM_TENANT_ID:  # your OpenCTEM organization id; empty: scan only
+  # The variables openctem-ci reads inside the container: the job identity
+  # and the job description (never trusted for identity: the platform reads
+  # the repository, ref and commit from the verified token).
+  OPENCTEM_PASS_ENV: >-
+    -e TF_BUILD -e SYSTEM_OIDCREQUESTURI -e SYSTEM_ACCESSTOKEN
+    -e OPENCTEM_API_URL -e OPENCTEM_TENANT_ID -e OPENCTEM_FAIL_ON
+    -e BUILD_REPOSITORY_URI -e BUILD_SOURCEVERSION -e BUILD_SOURCEBRANCH -e BUILD_REASON
+    -e SYSTEM_PULLREQUEST_PULLREQUESTID -e SYSTEM_PULLREQUEST_PULLREQUESTNUMBER
+    -e SYSTEM_PULLREQUEST_SOURCEBRANCH -e SYSTEM_PULLREQUEST_TARGETBRANCH -e SYSTEM_PULLREQUEST_ISFORK
 
 stages:
   - stage: openctem
@@ -35,19 +54,17 @@ stages:
               set -euo pipefail
               out="$(Agent.TempDirectory)/openctem"
               mkdir -p "$out"
-              repo="$(echo "$BUILD_REPOSITORY_URI" | sed -E 's#^https?://([^@/]*@)?##; s#\.git$##')"
+              # shellcheck disable=SC2086 # OPENCTEM_PASS_ENV is a list of -e flags
               docker run --rm --read-only --tmpfs /tmp --tmpfs "/home/openctem:uid=$(id -u),gid=$(id -g)" \
                 --user "$(id -u):$(id -g)" --cap-drop ALL --security-opt no-new-privileges \
-                -v "$BUILD_SOURCESDIRECTORY:/src" -v "$out:/out" \
-                -e OPENCTEM_WORKSPACE=/src -e OPENCTEM_REPOSITORY="$repo" \
-                -e OPENCTEM_COMMIT="$BUILD_SOURCEVERSION" -e OPENCTEM_BRANCH="$BUILD_SOURCEBRANCHNAME" \
-                -e OPENCTEM_PULL_REQUEST="${SYSTEM_PULLREQUEST_PULLREQUESTID:-}" \
-                -e OPENCTEM_FAIL_ON \
+                -v "$BUILD_SOURCESDIRECTORY:/src" -v "$out:/out" -e OPENCTEM_WORKSPACE=/src \
+                $OPENCTEM_PASS_ENV \
                 "$OPENCTEM_IMAGE" scan --capability "$CAPABILITY" --aggregate \
                 --sarif "/out/$CAPABILITY.sarif" --status "/out/$CAPABILITY.status.json"
             displayName: openctem-ci scan $(CAPABILITY)
             env:
-              OPENCTEM_FAIL_ON: $(OPENCTEM_FAIL_ON)
+              # The job's own token, only to request its OIDC token.
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
           - publish: $(Agent.TempDirectory)/openctem
             artifact: openctem-$(CAPABILITY)
             condition: always()
@@ -62,9 +79,11 @@ stages:
             patterns: 'openctem-*/*.status.json'
           - bash: |
               set -euo pipefail
+              # shellcheck disable=SC2086
               docker run --rm --read-only --tmpfs /tmp --user "$(id -u):$(id -g)" --cap-drop ALL \
-                -v "$(Pipeline.Workspace):/status:ro" -e OPENCTEM_FAIL_ON \
+                --security-opt no-new-privileges -v "$(Pipeline.Workspace):/status:ro" \
+                $OPENCTEM_PASS_ENV \
                 "$OPENCTEM_IMAGE" gate --status-dir /status --expect sast,sca,secrets,iac
             displayName: openctem-ci gate
             env:
-              OPENCTEM_FAIL_ON: $(OPENCTEM_FAIL_ON)
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
