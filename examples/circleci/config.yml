@@ -1,0 +1,61 @@
+# OpenCTEM CI scanning on CircleCI: one parallel job per capability, then
+# one gate. Scan only (SARIF and the local gate); see examples/README.md
+# for reporting to OpenCTEM.
+#
+# The job image is the OpenCTEM CI bundle (pinned by digest on a release by
+# scripts/pin-images.sh).
+
+version: 2.1
+
+executors:
+  openctem:
+    docker:
+      - image: ghcr.io/openctemio/ci:edge@sha256:2887311f4510e20e0cac51be11802bcbb97bdc66dc16274974ef88871e5016ad
+        entrypoint: [""]
+    resource_class: medium
+
+jobs:
+  scan:
+    executor: openctem
+    parameters:
+      capability:
+        type: enum
+        enum: [sast, sca, secrets, iac]
+    steps:
+      - checkout
+      - run:
+          name: openctem-ci scan << parameters.capability >>
+          no_output_timeout: 30m
+          command: |
+            export OPENCTEM_WORKSPACE="$PWD"
+            export OPENCTEM_REPOSITORY="$(echo "$CIRCLE_REPOSITORY_URL" | sed -E 's#^(https?://|git@)##; s#:#/#; s#\.git$##')"
+            export OPENCTEM_COMMIT="$CIRCLE_SHA1" OPENCTEM_BRANCH="$CIRCLE_BRANCH"
+            export OPENCTEM_PULL_REQUEST="${CIRCLE_PULL_REQUEST##*/}"
+            mkdir -p openctem-out
+            openctem-ci scan --capability << parameters.capability >> --aggregate \
+              --sarif openctem-out/<< parameters.capability >>.sarif \
+              --status openctem-out/<< parameters.capability >>.status.json
+      - persist_to_workspace:
+          root: .
+          paths: [openctem-out]
+      - store_artifacts:
+          path: openctem-out
+
+  gate:
+    executor: openctem
+    steps:
+      - attach_workspace:
+          at: .
+      - run:
+          name: openctem-ci gate
+          command: openctem-ci gate --status-dir openctem-out --expect sast,sca,secrets,iac --fail-on high
+
+workflows:
+  openctem:
+    jobs:
+      - scan:
+          matrix:
+            parameters:
+              capability: [sast, sca, secrets, iac]
+      - gate:
+          requires: [scan]
