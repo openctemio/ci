@@ -11,27 +11,23 @@ Each runs `sast`, `sca`, `secrets` and `iac` in parallel and then one
 `openctem-ci gate` over the status files of all of them: a capability that
 failed or did not report fails the gate.
 
-## Scan only, for now
+## Reporting to OpenCTEM
 
-These examples run in **scan-only mode**: SARIF files as artifacts and the
-local gate (`--fail-on`, here `high`). They do not upload to OpenCTEM.
-
-OpenCTEM accepts CI results only from a job that proves its identity with an
-OIDC token from an issuer the organization trusts; today that is GitHub
-Actions and GitLab CI (see `docs/github.md`, `docs/gitlab.md`). No
-long-lived API key is used or needed. Bitbucket Pipelines, CircleCI, Azure
-Pipelines (workload identity federation) and Jenkins (OIDC provider plugin)
-can all issue OIDC tokens; reporting from them needs the platform to trust
-those issuers, which is not built yet.
+Each example reports to OpenCTEM with the job's own OIDC identity once
+`OPENCTEM_API_URL` and `OPENCTEM_TENANT_ID` are set and the organization
+trusts the CI system (see [`docs/other-ci.md`](../docs/other-ci.md)). No
+long-lived API key is used or needed. Without `OPENCTEM_TENANT_ID` they run
+in **scan-only mode**: SARIF files as artifacts and the local gate
+(`--fail-on`, here `high`).
 
 ## Repository information
 
-Outside GitHub and GitLab, `openctem-ci` reads the job from `OPENCTEM_*`
-variables (the examples set them from the CI system's own variables):
+`openctem-ci` reads the job from each CI system's own variables. On another
+CI system it reads `OPENCTEM_*` variables:
 
 | Variable | Meaning |
 |---|---|
-| `OPENCTEM_WORKSPACE` | the checkout directory |
+| `OPENCTEM_WORKSPACE` | the checkout directory (also honored on the systems above, for a checkout mounted elsewhere in a container) |
 | `OPENCTEM_REPOSITORY` | `host/owner/name`, e.g. `bitbucket.org/acme/app` |
 | `OPENCTEM_COMMIT`, `OPENCTEM_BRANCH`, `OPENCTEM_DEFAULT_BRANCH` | the revision |
 | `OPENCTEM_PULL_REQUEST`, `OPENCTEM_TARGET_BRANCH` | the pull request, if any |
