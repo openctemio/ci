@@ -45,7 +45,10 @@ never implied). `ghcr.io/openctemio/ci` carries every tool.
 
 A job proves who it is with its CI provider's OIDC token (GitHub Actions
 `id-token: write`; GitLab `id_tokens` with the trust configuration's
-audience, default `openctem:tenant:<tenant id>`). `openctem-ci` exchanges it
+audience, default `openctem:tenant:<tenant id>`; Azure Pipelines from
+`System.OidcRequestUri`; Bitbucket `BITBUCKET_STEP_OIDC_TOKEN`; CircleCI and
+Jenkins a token minted or bound into `OPENCTEM_ID_TOKEN`, see
+[other-ci.md](other-ci.md)). `openctem-ci` exchanges it
 at `POST /api/v1/ci/oidc/exchange` for a run token (`octci_`, at most 15
 minutes) bound to one run on one repository. No API key is stored in CI.
 
@@ -55,8 +58,13 @@ minutes) bound to one run on one repository. No API key is stored in CI.
   are not followed, so the bearer cannot be sent to another host.
 - The repository, branch and commit of a run come from the verified token
   on the platform, not from the report.
-- CI systems without a supported OIDC provider (see `examples/`) run in
-  scan-only mode: SARIF, reports and the local gate, no upload.
+- Where the token signs no commit (CircleCI, Jenkins without a `sha`
+  claim) or no repository name (Bitbucket), the exchange carries the job's
+  own value; the platform uses it only then and marks it.
+- GitHub and Azure mint a token on request, so a long job renews its run
+  token; elsewhere the job's single token is exchanged once.
+- A CI system without OIDC runs in scan-only mode: SARIF, reports and the
+  local gate, no upload.
 
 ## Aggregate run
 

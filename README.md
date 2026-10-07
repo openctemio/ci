@@ -35,7 +35,7 @@ openctem-ci scan --capability sast \
 | `OPENCTEM_API_URL` | OpenCTEM URL (https) |
 | `OPENCTEM_TENANT_ID` | organization id; turns on reporting with the job's OIDC identity |
 | `OPENCTEM_OIDC_AUDIENCE` | audience, when the trust configuration does not use `openctem:tenant:<id>` |
-| `OPENCTEM_ID_TOKEN_VAR` | GitLab `id_tokens` variable (default `OPENCTEM_ID_TOKEN`) |
+| `OPENCTEM_ID_TOKEN_VAR` | the variable holding the job's token on GitLab (`id_tokens`), CircleCI and Jenkins (default `OPENCTEM_ID_TOKEN`) |
 
 Without `OPENCTEM_TENANT_ID`, or in a fork pull request, the scan runs in
 scan-only mode: files and the local gate (`--fail-on`), no upload.
@@ -47,7 +47,7 @@ Design, identity and threat model: [docs/architecture.md](docs/architecture.md).
 - GitHub Actions: [docs/github.md](docs/github.md)
 - GitLab CI: [docs/gitlab.md](docs/gitlab.md)
 - Images, signatures and SBOMs: [docs/images.md](docs/images.md)
-- Jenkins, Azure Pipelines, Bitbucket, CircleCI: [examples/](examples/)
+- Azure Pipelines, Bitbucket Pipelines, CircleCI, Jenkins: [docs/other-ci.md](docs/other-ci.md) and [examples/](examples/)
 
 ## Development
 
