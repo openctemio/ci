@@ -1,0 +1,9 @@
+.git
+.github
+docs
+examples
+gitlab
+testdata
+**/*_test.go
+**/testdata
+*.md
