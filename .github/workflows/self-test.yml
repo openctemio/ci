@@ -109,6 +109,20 @@ jobs:
           done
           echo "edge=$edge" >> "$GITHUB_OUTPUT"
 
+  # gitlab/templates/all.yml as a GitLab pipeline (gitlab-ci-local, docker
+  # executor) with the images the template pins.
+  gitlab:
+    needs: probe
+    if: needs.probe.outputs.edge == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run the GitLab template as a pipeline
+        run: bash scripts/gitlab-local-test.sh
+
   reusable:
     needs: probe
     if: needs.probe.outputs.edge == 'true'
