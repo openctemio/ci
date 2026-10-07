@@ -1,0 +1,202 @@
+# OpenCTEM CI for GitLab: sast, sca, secrets and iac in parallel, reported into one OpenCTEM run with one gate.
+#
+#   include:
+#     - remote: https://raw.githubusercontent.com/openctemio/ci/v1/gitlab/templates/all.yml
+#   variables:
+#     OPENCTEM_API_URL: https://openctem.example.com
+#     OPENCTEM_TENANT_ID: <organization id>
+#
+# Reporting uses the job's OIDC identity (id_tokens, audience
+# openctem:tenant:$OPENCTEM_TENANT_ID): no API key is stored in GitLab. Without
+# OPENCTEM_TENANT_ID, or in a merge request from a fork, the jobs scan only:
+# the GitLab security reports (merge request widget, pipeline security tab),
+# SARIF and the local gate (OPENCTEM_FAIL_ON).
+#
+# Images are pinned by digest (scripts/pin-images.sh verifies each signature
+# before pinning). Exit codes: 0 pass, 1 the gate failed, 2 a scan cannot be
+# trusted. To report without failing the pipeline while findings are
+# triaged, set on the job:  allow_failure: { exit_codes: [1] }
+# Design: https://github.com/openctemio/ci/blob/main/docs/gitlab.md
+
+variables:
+  OPENCTEM_API_URL: ""
+  OPENCTEM_TENANT_ID: ""
+  OPENCTEM_FAIL_ON: ""
+
+openctem-sast:
+  stage: test
+  image:
+    name: ghcr.io/openctemio/ci-semgrep:edge@sha256:fe80bd83d24d6d1fb8f1c6902ca2ed678830a94509d9cfb794509380a96c462c
+    entrypoint: [""]
+  id_tokens:
+    OPENCTEM_ID_TOKEN:
+      aud: openctem:tenant:$OPENCTEM_TENANT_ID
+  script:
+    - >-
+      openctem-ci scan --capability sast --aggregate
+      --gitlab-report gl-sast-report.json
+      --sarif openctem-sast.sarif
+      --status openctem-status/sast.status.json
+      $OPENCTEM_SCAN_ARGS
+  artifacts:
+    when: always
+    expire_in: 1 week
+    reports:
+      sast: gl-sast-report.json
+    paths:
+      - gl-sast-report.json
+      - openctem-sast.sarif
+      - openctem-status/
+  rules:
+    - if: $OPENCTEM_DISABLED == "true"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # A branch with an open merge request runs in the merge request pipeline.
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+
+openctem-sca:
+  stage: test
+  image:
+    name: ghcr.io/openctemio/ci-trivy:edge@sha256:b97ce59dab0a8e38ab16846fcd897d168125c271255011a08018720419760c39
+    entrypoint: [""]
+  id_tokens:
+    OPENCTEM_ID_TOKEN:
+      aud: openctem:tenant:$OPENCTEM_TENANT_ID
+  variables:
+    TRIVY_CACHE_DIR: $CI_PROJECT_DIR/.openctem-trivy-cache
+    TRIVY_SKIP_DIRS: .openctem-trivy-cache
+  cache:
+    key: openctem-trivy-db
+    paths:
+      - .openctem-trivy-cache/
+  script:
+    - >-
+      openctem-ci scan --capability sca --aggregate
+      --gitlab-report gl-dependency-scanning-report.json
+      --sarif openctem-sca.sarif
+      --status openctem-status/sca.status.json
+      $OPENCTEM_SCAN_ARGS
+  artifacts:
+    when: always
+    expire_in: 1 week
+    reports:
+      dependency_scanning: gl-dependency-scanning-report.json
+    paths:
+      - gl-dependency-scanning-report.json
+      - openctem-sca.sarif
+      - openctem-status/
+  rules:
+    - if: $OPENCTEM_DISABLED == "true"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # A branch with an open merge request runs in the merge request pipeline.
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+
+openctem-secrets:
+  stage: test
+  image:
+    name: ghcr.io/openctemio/ci-betterleaks:edge@sha256:9374738193e7991b092079a59b3228fb6760b10e9ac6f45e777b0561f698fe64
+    entrypoint: [""]
+  id_tokens:
+    OPENCTEM_ID_TOKEN:
+      aud: openctem:tenant:$OPENCTEM_TENANT_ID
+  script:
+    - >-
+      openctem-ci scan --capability secrets --aggregate
+      --gitlab-report gl-secret-detection-report.json
+      --sarif openctem-secrets.sarif
+      --status openctem-status/secrets.status.json
+      $OPENCTEM_SCAN_ARGS
+  artifacts:
+    when: always
+    expire_in: 1 week
+    reports:
+      secret_detection: gl-secret-detection-report.json
+    paths:
+      - gl-secret-detection-report.json
+      - openctem-secrets.sarif
+      - openctem-status/
+  rules:
+    - if: $OPENCTEM_DISABLED == "true"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # A branch with an open merge request runs in the merge request pipeline.
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+
+openctem-iac:
+  stage: test
+  image:
+    name: ghcr.io/openctemio/ci-trivy:edge@sha256:b97ce59dab0a8e38ab16846fcd897d168125c271255011a08018720419760c39
+    entrypoint: [""]
+  id_tokens:
+    OPENCTEM_ID_TOKEN:
+      aud: openctem:tenant:$OPENCTEM_TENANT_ID
+  variables:
+    TRIVY_CACHE_DIR: $CI_PROJECT_DIR/.openctem-trivy-cache
+    TRIVY_SKIP_DIRS: .openctem-trivy-cache
+  cache:
+    key: openctem-trivy-db
+    paths:
+      - .openctem-trivy-cache/
+  script:
+    - >-
+      openctem-ci scan --capability iac --aggregate
+      --gitlab-report gl-iac-report.json
+      --sarif openctem-iac.sarif
+      --status openctem-status/iac.status.json
+      $OPENCTEM_SCAN_ARGS
+  artifacts:
+    when: always
+    expire_in: 1 week
+    reports:
+      sast: gl-iac-report.json
+    paths:
+      - gl-iac-report.json
+      - openctem-iac.sarif
+      - openctem-status/
+  rules:
+    - if: $OPENCTEM_DISABLED == "true"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # A branch with an open merge request runs in the merge request pipeline.
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+
+# Judges every capability job above in one OpenCTEM run. A capability
+# that did not report (failed, cancelled, not uploaded) fails the gate.
+openctem-gate:
+  stage: .post
+  image:
+    name: ghcr.io/openctemio/ci-betterleaks:edge@sha256:9374738193e7991b092079a59b3228fb6760b10e9ac6f45e777b0561f698fe64
+    entrypoint: [""]
+  id_tokens:
+    OPENCTEM_ID_TOKEN:
+      aud: openctem:tenant:$OPENCTEM_TENANT_ID
+  needs:
+    - job: openctem-sast
+      artifacts: true
+    - job: openctem-sca
+      artifacts: true
+    - job: openctem-secrets
+      artifacts: true
+    - job: openctem-iac
+      artifacts: true
+  script:
+    - openctem-ci gate --status-dir openctem-status --expect sast,sca,secrets,iac
+  rules:
+    - if: $OPENCTEM_DISABLED == "true"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: always
+    # A branch with an open merge request runs in the merge request pipeline.
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+      when: always
