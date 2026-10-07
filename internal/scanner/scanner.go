@@ -103,7 +103,7 @@ func Run(ctx context.Context, c capability.Capability, opts Options) (*Result, e
 	start := time.Now()
 	cmd := exec.CommandContext(ctx, bin, argv[1:]...) // #nosec G204 -- fixed argv from Command, no shell
 	cmd.Env = env
-	cmd.Env = append(cmd.Env, toolEnv(c.Tool, dir)...)
+	cmd.Env = append(cmd.Env, toolEnv(c.Tool, dir, opts.Target)...)
 	if opts.Target != "" {
 		cmd.Dir = opts.Target
 	}
@@ -227,8 +227,16 @@ func parseVersion(s string) string {
 }
 
 // toolEnv is the environment each tool needs on top of the filtered one.
-func toolEnv(tool, dir string) []string {
+// The checkout usually belongs to another user than the scanner (a
+// container): git then refuses it as a dubious-ownership repository and
+// semgrep loses its file list. Exactly the scanned directory is trusted,
+// for this process only (command-scope configuration), never every
+// directory.
+func toolEnv(tool, dir, target string) []string {
 	env := []string{"TMPDIR=" + dir}
+	if target != "" {
+		env = append(env, "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=safe.directory", "GIT_CONFIG_VALUE_0="+target)
+	}
 	switch tool {
 	case "semgrep":
 		env = append(env, "SEMGREP_SEND_METRICS=off", "SEMGREP_ENABLE_VERSION_CHECK=0")
