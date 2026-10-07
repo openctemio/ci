@@ -1,0 +1,56 @@
+# OpenCTEM CI scanning on Bitbucket Pipelines: one parallel step per
+# capability, then one gate. Scan only (SARIF and the local gate); see
+# examples/README.md for reporting to OpenCTEM.
+#
+# The step image is the OpenCTEM CI bundle (pinned by digest on a release by
+# scripts/pin-images.sh); Bitbucket runs the script inside it.
+
+image:
+  name: ghcr.io/openctemio/ci:edge@sha256:2887311f4510e20e0cac51be11802bcbb97bdc66dc16274974ef88871e5016ad
+  run-as-user: 1001
+
+definitions:
+  scan: &scan
+    max-time: 45
+    artifacts:
+      - openctem-out/**
+  caches:
+    trivy: .openctem-trivy-cache
+
+pipelines:
+  default: &openctem
+    - parallel:
+        - step:
+            <<: *scan
+            name: OpenCTEM sast
+            script:
+              - export OPENCTEM_WORKSPACE="$BITBUCKET_CLONE_DIR" OPENCTEM_REPOSITORY="bitbucket.org/$BITBUCKET_REPO_FULL_NAME" OPENCTEM_COMMIT="$BITBUCKET_COMMIT" OPENCTEM_BRANCH="$BITBUCKET_BRANCH" OPENCTEM_PULL_REQUEST="${BITBUCKET_PR_ID:-}"
+              - openctem-ci scan --capability sast --aggregate --sarif openctem-out/sast.sarif --status openctem-out/sast.status.json
+        - step:
+            <<: *scan
+            name: OpenCTEM sca
+            caches: [trivy]
+            script:
+              - export OPENCTEM_WORKSPACE="$BITBUCKET_CLONE_DIR" OPENCTEM_REPOSITORY="bitbucket.org/$BITBUCKET_REPO_FULL_NAME" OPENCTEM_COMMIT="$BITBUCKET_COMMIT" OPENCTEM_BRANCH="$BITBUCKET_BRANCH" OPENCTEM_PULL_REQUEST="${BITBUCKET_PR_ID:-}"
+              - export TRIVY_CACHE_DIR="$BITBUCKET_CLONE_DIR/.openctem-trivy-cache" TRIVY_SKIP_DIRS=.openctem-trivy-cache
+              - openctem-ci scan --capability sca --aggregate --sarif openctem-out/sca.sarif --status openctem-out/sca.status.json
+        - step:
+            <<: *scan
+            name: OpenCTEM secrets
+            script:
+              - export OPENCTEM_WORKSPACE="$BITBUCKET_CLONE_DIR" OPENCTEM_REPOSITORY="bitbucket.org/$BITBUCKET_REPO_FULL_NAME" OPENCTEM_COMMIT="$BITBUCKET_COMMIT" OPENCTEM_BRANCH="$BITBUCKET_BRANCH" OPENCTEM_PULL_REQUEST="${BITBUCKET_PR_ID:-}"
+              - openctem-ci scan --capability secrets --aggregate --sarif openctem-out/secrets.sarif --status openctem-out/secrets.status.json
+        - step:
+            <<: *scan
+            name: OpenCTEM iac
+            caches: [trivy]
+            script:
+              - export OPENCTEM_WORKSPACE="$BITBUCKET_CLONE_DIR" OPENCTEM_REPOSITORY="bitbucket.org/$BITBUCKET_REPO_FULL_NAME" OPENCTEM_COMMIT="$BITBUCKET_COMMIT" OPENCTEM_BRANCH="$BITBUCKET_BRANCH" OPENCTEM_PULL_REQUEST="${BITBUCKET_PR_ID:-}"
+              - export TRIVY_CACHE_DIR="$BITBUCKET_CLONE_DIR/.openctem-trivy-cache" TRIVY_SKIP_DIRS=.openctem-trivy-cache
+              - openctem-ci scan --capability iac --aggregate --sarif openctem-out/iac.sarif --status openctem-out/iac.status.json
+    - step:
+        name: OpenCTEM gate
+        script:
+          - openctem-ci gate --status-dir openctem-out --expect sast,sca,secrets,iac --fail-on high
+  pull-requests:
+    '**': *openctem
