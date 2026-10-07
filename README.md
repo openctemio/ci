@@ -47,6 +47,7 @@ Design, identity and threat model: [docs/architecture.md](docs/architecture.md).
 - GitHub Actions: [docs/github.md](docs/github.md)
 - GitLab CI: [docs/gitlab.md](docs/gitlab.md)
 - Images, signatures and SBOMs: [docs/images.md](docs/images.md)
+- Jenkins, Azure Pipelines, Bitbucket, CircleCI: [examples/](examples/)
 
 ## Development
 

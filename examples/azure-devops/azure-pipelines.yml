@@ -1,0 +1,70 @@
+# OpenCTEM CI scanning on Azure Pipelines: one parallel job per capability,
+# then one gate. Scan only (SARIF and the local gate); see
+# examples/README.md for reporting to OpenCTEM.
+#
+# Images are pinned by digest (scripts/pin-images.sh rewrites them on a release).
+
+trigger:
+  branches:
+    include: [main]
+pr:
+  branches:
+    include: ['*']
+
+variables:
+  OPENCTEM_IMAGE: ghcr.io/openctemio/ci:edge@sha256:2887311f4510e20e0cac51be11802bcbb97bdc66dc16274974ef88871e5016ad
+  OPENCTEM_FAIL_ON: high
+
+stages:
+  - stage: openctem
+    displayName: OpenCTEM
+    jobs:
+      - job: scan
+        pool: { vmImage: ubuntu-latest }
+        timeoutInMinutes: 45
+        strategy:
+          matrix:
+            sast: { CAPABILITY: sast }
+            sca: { CAPABILITY: sca }
+            secrets: { CAPABILITY: secrets }
+            iac: { CAPABILITY: iac }
+        steps:
+          - checkout: self
+            persistCredentials: false
+          - bash: |
+              set -euo pipefail
+              out="$(Agent.TempDirectory)/openctem"
+              mkdir -p "$out"
+              repo="$(echo "$BUILD_REPOSITORY_URI" | sed -E 's#^https?://([^@/]*@)?##; s#\.git$##')"
+              docker run --rm --read-only --tmpfs /tmp --tmpfs "/home/openctem:uid=$(id -u),gid=$(id -g)" \
+                --user "$(id -u):$(id -g)" --cap-drop ALL --security-opt no-new-privileges \
+                -v "$BUILD_SOURCESDIRECTORY:/src" -v "$out:/out" \
+                -e OPENCTEM_WORKSPACE=/src -e OPENCTEM_REPOSITORY="$repo" \
+                -e OPENCTEM_COMMIT="$BUILD_SOURCEVERSION" -e OPENCTEM_BRANCH="$BUILD_SOURCEBRANCHNAME" \
+                -e OPENCTEM_PULL_REQUEST="${SYSTEM_PULLREQUEST_PULLREQUESTID:-}" \
+                -e OPENCTEM_FAIL_ON \
+                "$OPENCTEM_IMAGE" scan --capability "$CAPABILITY" --aggregate \
+                --sarif "/out/$CAPABILITY.sarif" --status "/out/$CAPABILITY.status.json"
+            displayName: openctem-ci scan $(CAPABILITY)
+            env:
+              OPENCTEM_FAIL_ON: $(OPENCTEM_FAIL_ON)
+          - publish: $(Agent.TempDirectory)/openctem
+            artifact: openctem-$(CAPABILITY)
+            condition: always()
+
+      - job: gate
+        dependsOn: scan
+        condition: always()
+        pool: { vmImage: ubuntu-latest }
+        steps:
+          - checkout: none
+          - download: current
+            patterns: 'openctem-*/*.status.json'
+          - bash: |
+              set -euo pipefail
+              docker run --rm --read-only --tmpfs /tmp --user "$(id -u):$(id -g)" --cap-drop ALL \
+                -v "$(Pipeline.Workspace):/status:ro" -e OPENCTEM_FAIL_ON \
+                "$OPENCTEM_IMAGE" gate --status-dir /status --expect sast,sca,secrets,iac
+            displayName: openctem-ci gate
+            env:
+              OPENCTEM_FAIL_ON: $(OPENCTEM_FAIL_ON)
