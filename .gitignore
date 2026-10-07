@@ -1,0 +1,21 @@
+# Binaries
+/openctem-ci
+/bin/
+/dist/
+*.test
+*.exe
+
+# Coverage
+*.out
+coverage.*
+
+# Scan outputs written by local runs
+/*.sarif
+/gl-*-report.json
+/openctem-ci-report.json
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
