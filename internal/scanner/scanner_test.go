@@ -131,6 +131,9 @@ env > "$out"
 	if _, err := os.Stat(tmp); !os.IsNotExist(err) {
 		t.Fatalf("the private directory %s was not removed: %v", tmp, err)
 	}
+	if !strings.Contains(out, "GIT_CONFIG_KEY_0=safe.directory") {
+		t.Errorf("the checkout is not trusted for git:\n%s", out)
+	}
 	if res.Version != "1.9.0" {
 		t.Errorf("version %q", res.Version)
 	}
