@@ -1,0 +1,215 @@
+name: OpenCTEM scan
+
+# Reusable workflow: one job per capability, in parallel, all reporting into
+# one OpenCTEM CI run; a final job asks the platform gate for the verdict on
+# all of them.
+#
+#   jobs:
+#     openctem:
+#       uses: openctemio/ci/.github/workflows/scan.yml@v1
+#       with:
+#         capabilities: sast,sca,secrets
+#         api-url: https://openctem.example.com
+#         tenant-id: <organization id>
+#       permissions:
+#         contents: read
+#         id-token: write
+#         security-events: write   # only with upload-sarif: true
+#
+# The jobs run the action of this workflow's own commit (job.workflow_sha),
+# so a pinned workflow never runs a different action version.
+
+on:
+  workflow_call:
+    inputs:
+      capabilities:
+        description: 'Comma-separated capabilities: sast, sca, secrets, iac, container, or all'
+        type: string
+        default: 'sast,sca,secrets'
+      api-url:
+        description: 'OpenCTEM URL (https)'
+        type: string
+        default: ''
+      tenant-id:
+        description: 'OpenCTEM organization id (reporting with the job OIDC identity)'
+        type: string
+        default: ''
+      oidc-audience:
+        type: string
+        default: ''
+      target:
+        description: 'Directory to scan, relative to the repository root'
+        type: string
+        default: '.'
+      image:
+        description: 'Image reference to scan (container capability)'
+        type: string
+        default: ''
+      fail-on:
+        description: 'Local gate threshold, used when the platform gate cannot decide'
+        type: string
+        default: ''
+      enforce:
+        description: 'Fail the workflow when the gate fails (a scan error always fails)'
+        type: boolean
+        default: true
+      upload-sarif:
+        description: 'Upload SARIF to GitHub code scanning (needs security-events: write)'
+        type: boolean
+        default: false
+      image-tag:
+        description: 'Image tag (default: the workflow version, or edge)'
+        type: string
+        default: ''
+      scanner-image:
+        description: 'Run this image for every capability (testing a build)'
+        type: string
+        default: ''
+      verify-signature:
+        type: boolean
+        default: true
+    outputs:
+      exit-code:
+        description: '0 pass, 1 the gate failed, 2 a scan cannot be trusted'
+        value: ${{ jobs.gate.outputs.exit-code }}
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      capabilities: ${{ steps.plan.outputs.capabilities }}
+      list: ${{ steps.plan.outputs.list }}
+      tag: ${{ steps.plan.outputs.tag }}
+    steps:
+      - id: plan
+        env:
+          CAPS: ${{ inputs.capabilities }}
+          TAG: ${{ inputs.image-tag }}
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+        run: |
+          valid=" sast sca secrets iac container "
+          out=()
+          for c in ${CAPS//,/ }; do
+            c="${c,,}"
+            if [ "$c" = all ]; then out+=(sast sca secrets iac); continue; fi
+            [[ "$valid" == *" $c "* ]] || { echo "::error::unknown capability '$c'"; exit 1; }
+            out+=("$c")
+          done
+          mapfile -t out < <(printf '%s\n' "${out[@]}" | awk 'NF && !seen[$0]++')
+          [ "${#out[@]}" -gt 0 ] || { echo "::error::no capability"; exit 1; }
+          echo "capabilities=$(printf '%s\n' "${out[@]}" | jq -Rnc '[inputs]')" >> "$GITHUB_OUTPUT"
+          echo "list=$(IFS=,; echo "${out[*]}")" >> "$GITHUB_OUTPUT"
+          # The image tag follows this workflow's ref: @v1 / @v1.2.3 run the
+          # matching images, anything else the images built from main.
+          if [ -z "$TAG" ]; then
+            ref="${WORKFLOW_REF##*@}"
+            if [[ "$ref" =~ ^refs/tags/(v[0-9]+(\.[0-9]+\.[0-9]+)?)$ ]]; then TAG="${BASH_REMATCH[1]}"; else TAG=edge; fi
+          fi
+          [[ "$TAG" =~ ^[A-Za-z0-9._-]{1,128}$ ]] || { echo "::error::bad image tag"; exit 1; }
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+  scan:
+    name: ${{ matrix.capability }}
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        capability: ${{ fromJSON(needs.plan.outputs.capabilities) }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: src
+          persist-credentials: false
+      - name: Check out openctemio/ci at this workflow's commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openctemio/ci
+          ref: ${{ job.workflow_sha }}
+          path: .openctem-ci
+          persist-credentials: false
+      - name: Scan
+        uses: ./.openctem-ci
+        with:
+          command: scan
+          capabilities: ${{ matrix.capability }}
+          aggregate: 'true'
+          skip-gate: 'true'
+          path: src
+          target: ${{ inputs.target }}
+          image: ${{ inputs.image }}
+          api-url: ${{ inputs.api-url }}
+          tenant-id: ${{ inputs.tenant-id }}
+          oidc-audience: ${{ inputs.oidc-audience }}
+          fail-on: ${{ inputs.fail-on }}
+          upload-sarif: ${{ inputs.upload-sarif }}
+          image-tag: ${{ needs.plan.outputs.tag }}
+          scanner-image: ${{ inputs.scanner-image }}
+          verify-signature: ${{ inputs.verify-signature }}
+      - name: Hand the status to the gate job
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: openctem-status-${{ matrix.capability }}
+          path: ${{ runner.temp }}/openctem/status/
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Keep the reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: openctem-reports-${{ matrix.capability }}
+          path: |
+            ${{ runner.temp }}/openctem/sarif/
+            ${{ runner.temp }}/openctem/gitlab/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  gate:
+    needs: [plan, scan]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      exit-code: ${{ steps.gate.outputs.exit-code }}
+    steps:
+      - name: Check out openctemio/ci at this workflow's commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: openctemio/ci
+          ref: ${{ job.workflow_sha }}
+          path: .openctem-ci
+          persist-credentials: false
+      - name: Collect the capability statuses
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: openctem-status-*
+          path: statuses
+      - name: Gate
+        id: gate
+        uses: ./.openctem-ci
+        with:
+          command: gate
+          status-dir: statuses
+          capabilities: ${{ needs.plan.outputs.list }}
+          api-url: ${{ inputs.api-url }}
+          tenant-id: ${{ inputs.tenant-id }}
+          oidc-audience: ${{ inputs.oidc-audience }}
+          fail-on: ${{ inputs.fail-on }}
+          enforce: ${{ inputs.enforce }}
+          image-tag: ${{ needs.plan.outputs.tag }}
+          scanner-image: ${{ inputs.scanner-image }}
+          verify-signature: ${{ inputs.verify-signature }}
