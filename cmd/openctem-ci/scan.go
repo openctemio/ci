@@ -195,7 +195,9 @@ func (s *scanJob) openRun() {
 		if tenant != "" {
 			if errors.Is(err, platform.ErrNoOIDC) {
 				s.warnf("%s is set but this job has no OIDC token (GitHub Actions: grant 'permissions: id-token: write'; "+
-					"GitLab CI: define 'id_tokens: %s' with the trust configuration's audience); scan only",
+					"GitLab CI: define 'id_tokens: %[2]s' with the trust configuration's audience; Azure Pipelines: map "+
+					"SYSTEM_ACCESSTOKEN: $(System.AccessToken); Bitbucket: 'oidc: true' on the step; CircleCI, Jenkins: "+
+					"put the job's token in %[2]s, see docs/other-ci.md); scan only",
 					platform.EnvTenantID, nonEmpty(cfg.IDTokenVar, platform.DefaultIDTokenVar))
 			} else {
 				s.warnf("reporting to OpenCTEM is not available: %v; scan only", err)

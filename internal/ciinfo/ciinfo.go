@@ -66,6 +66,9 @@ func Detect(getenv func(string) string) Info {
 	case getenv("GITLAB_CI") == "true" || (getenv("CI_PROJECT_PATH") != "" && getenv("CI_COMMIT_SHA") != ""):
 		return gitlab(getenv)
 	}
+	if i, ok := detectOther(getenv); ok {
+		return i
+	}
 	return generic(getenv)
 }
 

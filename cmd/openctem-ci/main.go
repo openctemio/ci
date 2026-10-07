@@ -77,7 +77,14 @@ Environment:
   OPENCTEM_API_URL        the OpenCTEM URL (https)
   OPENCTEM_TENANT_ID      the organization id: turns on reporting with the job's OIDC identity
   OPENCTEM_OIDC_AUDIENCE  the OIDC audience (default openctem:tenant:<id>)
-  OPENCTEM_ID_TOKEN_VAR   the GitLab id_tokens variable (default OPENCTEM_ID_TOKEN)
+  OPENCTEM_ID_TOKEN_VAR   the variable holding the job's token on GitLab, CircleCI and
+                          Jenkins (default OPENCTEM_ID_TOKEN)
+
+The job's token: GitHub Actions (id-token: write), GitLab CI (id_tokens),
+Azure Pipelines (System.OidcRequestUri with SYSTEM_ACCESSTOKEN mapped from
+$(System.AccessToken)), Bitbucket Pipelines (oidc: true), CircleCI
+(circleci run oidc get into OPENCTEM_ID_TOKEN), Jenkins (the OpenID Connect
+Provider plugin's credential bound to OPENCTEM_ID_TOKEN).
 
 Exit codes: 0 pass, 1 the gate failed, 2 error (the scan is not trusted).
 `)
