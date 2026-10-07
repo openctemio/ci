@@ -1,0 +1,135 @@
+name: Self-test
+
+# Runs this repository's own GitHub Action and reusable workflow against
+# testdata/fixture (a deliberately vulnerable mini repository) in scan-only
+# mode (no platform), and checks what a user gets: one SARIF file per
+# capability with results, GitLab security reports that validate against
+# the published schemas, the expected gate exit code, and no raw secret in
+# any output.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FIXTURE_SECRET: Zq8vT3xK9mB2nR7wL4pY6sD1fH5jC0gA
+
+jobs:
+  # The action with an image built from this commit.
+  action:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the bundle image from this commit
+        run: docker build -f images/all/Dockerfile -t openctem-ci:selftest .
+      - name: Run the action (all capabilities, scan only)
+        id: scan
+        uses: ./
+        with:
+          capabilities: all
+          path: testdata/fixture
+          scanner-image: openctem-ci:selftest
+          verify-signature: 'false'
+          fail-on: high
+          enforce: 'false'
+      - name: Check the outputs
+        env:
+          EXIT_CODE: ${{ steps.scan.outputs.exit-code }}
+          SARIF_DIR: ${{ steps.scan.outputs.sarif-dir }}
+          STATUS_DIR: ${{ steps.scan.outputs.status-dir }}
+        run: |
+          set -euo pipefail
+          out="$(dirname "$SARIF_DIR")"
+          [ "$EXIT_CODE" = 1 ] || { echo "::error::expected the local gate to fail (1), got $EXIT_CODE"; exit 1; }
+          for c in sast sca secrets iac; do
+            n=$(jq '[.runs[].results[]] | length' "$SARIF_DIR/openctem-$c.sarif")
+            echo "$c: $n SARIF result(s)"
+            [ "$n" -gt 0 ] || { echo "::error::$c found nothing in the fixture"; exit 1; }
+            jq -e '.ok == true' "$STATUS_DIR/$c.status.json" > /dev/null
+          done
+          if grep -rl "$FIXTURE_SECRET" "$out"; then
+            echo "::error::the raw fixture secret is in an output"
+            exit 1
+          fi
+          {
+            echo "### Self-test outputs"
+            for f in "$SARIF_DIR"/*.sarif; do echo "- $(basename "$f"): $(jq '[.runs[].results[]] | length' "$f") results"; done
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Validate the GitLab reports against the published schemas
+        env:
+          GITLAB_DIR: ${{ steps.scan.outputs.sarif-dir }}/../gitlab
+        run: |
+          python3 -m venv /tmp/v && /tmp/v/bin/pip install -q jsonschema==4.25.1
+          /tmp/v/bin/python - <<'EOF'
+          import json, os, sys, jsonschema
+          d = os.environ["GITLAB_DIR"]
+          schemas = "internal/gitlab/testdata/schemas/v15.2.5"
+          kinds = {"sast": "sast", "sca": "dependency-scanning", "secrets": "secret-detection", "iac": "sast"}
+          for cap, kind in kinds.items():
+              doc = json.load(open(f"{d}/gl-{cap}-report.json"))
+              schema = json.load(open(f"{schemas}/{kind}-report-format.json"))
+              jsonschema.validate(doc, schema)
+              print(f"gl-{cap}-report.json: valid {kind} report, {len(doc['vulnerabilities'])} vulnerabilities")
+              if not doc["vulnerabilities"]:
+                  sys.exit(f"gl-{cap}-report.json is empty")
+          EOF
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: self-test-action
+          path: ${{ runner.temp }}/openctem/
+          retention-days: 7
+
+  # The reusable workflow (one job per capability, aggregate gate) needs the
+  # published images: it runs once ghcr.io/openctemio/ci-*:edge exist.
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      edge: ${{ steps.p.outputs.edge }}
+    steps:
+      - id: p
+        run: |
+          edge=true
+          for i in ci-semgrep ci-trivy ci-betterleaks; do
+            docker buildx imagetools inspect "ghcr.io/openctemio/$i:edge" > /dev/null 2>&1 || edge=false
+          done
+          echo "edge=$edge" >> "$GITHUB_OUTPUT"
+
+  reusable:
+    needs: probe
+    if: needs.probe.outputs.edge == 'true'
+    permissions:
+      contents: read
+      id-token: write
+      security-events: write
+    uses: ./.github/workflows/scan.yml
+    with:
+      capabilities: all
+      target: testdata/fixture
+      fail-on: high
+      enforce: false
+
+  reusable-check:
+    needs: reusable
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: The aggregate gate failed on the fixture's high findings
+        env:
+          EXIT_CODE: ${{ needs.reusable.outputs.exit-code }}
+        run: |
+          [ "$EXIT_CODE" = 1 ] || { echo "::error::expected 1, got '$EXIT_CODE'"; exit 1; }
