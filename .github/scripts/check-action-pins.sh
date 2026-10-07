@@ -10,8 +10,8 @@
 set -euo pipefail
 
 dirs=()
-for d in .github/workflows .github/actions; do
-  [ -d "$d" ] && dirs+=("$d")
+for d in .github/workflows .github/actions action.yml; do
+  [ -e "$d" ] && dirs+=("$d")
 done
 [ ${#dirs[@]} -eq 0 ] && exit 0
 

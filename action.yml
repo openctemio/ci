@@ -1,0 +1,136 @@
+name: OpenCTEM CI scan
+description: Run OpenCTEM scan capabilities (sast, sca, secrets, iac, container) and report to OpenCTEM with the job's OIDC identity.
+author: OpenCTEM
+branding:
+  icon: shield
+  color: blue
+
+# Usage (one job, capabilities in sequence):
+#
+#   permissions:
+#     contents: read
+#     id-token: write          # report to OpenCTEM with the job identity
+#     security-events: write   # only with upload-sarif: true
+#   steps:
+#     - uses: actions/checkout@<sha>
+#     - uses: openctemio/ci@v1
+#       with:
+#         capabilities: sast,sca,secrets
+#         api-url: https://openctem.example.com
+#         tenant-id: <organization id>
+#
+# For one parallel job per capability use the reusable workflow
+# .github/workflows/scan.yml. Without tenant-id (or in a fork pull request)
+# it scans only: SARIF, the local gate (fail-on), no upload.
+
+inputs:
+  capabilities:
+    description: 'Comma-separated capabilities: sast, sca, secrets, iac, container, or all (every repository capability)'
+    default: 'sast,sca,secrets'
+  api-url:
+    description: 'OpenCTEM URL (https)'
+    default: ''
+  tenant-id:
+    description: 'OpenCTEM organization id: turns on reporting with the job OIDC identity (needs id-token: write)'
+    default: ''
+  oidc-audience:
+    description: 'OIDC audience, when the trust configuration does not use openctem:tenant:<id>'
+    default: ''
+  path:
+    description: 'Directory of the checkout, relative to the workspace'
+    default: '.'
+  target:
+    description: 'Directory to scan, relative to the checkout'
+    default: '.'
+  image:
+    description: 'Image reference to scan (container capability)'
+    default: ''
+  semgrep-config:
+    description: 'semgrep rules: a registry pack (default p/default) or a path in the repository'
+    default: ''
+  fail-on:
+    description: 'Local gate threshold (critical, high, medium, low, info), used when the platform gate cannot decide'
+    default: ''
+  enforce:
+    description: 'Fail the job when the gate fails (false: report only; a scan error always fails)'
+    default: 'true'
+  upload-sarif:
+    description: 'Upload the SARIF files to GitHub code scanning (needs security-events: write)'
+    default: 'false'
+  aggregate:
+    description: 'auto (several capabilities report into one run and one gate decides), true or false'
+    default: 'auto'
+  skip-gate:
+    description: 'With aggregate: do not run the gate here (a later job runs command: gate)'
+    default: 'false'
+  command:
+    description: 'scan, or gate (judge the status files of earlier capability jobs in status-dir)'
+    default: 'scan'
+  status-dir:
+    description: 'command gate: directory (relative to the workspace) holding the *.status.json files'
+    default: ''
+  image-tag:
+    description: 'Image tag (default: the action version, or edge)'
+    default: ''
+  scanner-image:
+    description: 'Run this image for every capability instead of the default per-tool images'
+    default: ''
+  verify-signature:
+    description: 'Verify the image signature (cosign keyless) and run it by digest'
+    default: 'true'
+
+outputs:
+  exit-code:
+    description: '0 pass, 1 the gate failed, 2 the scan cannot be trusted'
+    value: ${{ steps.run.outputs.exit-code }}
+  sarif-dir:
+    description: 'Directory holding one SARIF file per capability'
+    value: ${{ steps.run.outputs.sarif-dir }}
+  status-dir:
+    description: 'Directory holding one status file per capability (for a later gate job)'
+    value: ${{ steps.run.outputs.status-dir }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install cosign
+      if: inputs.verify-signature == 'true'
+      uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+    - name: Trivy database cache
+      if: contains(inputs.capabilities, 'sca') || contains(inputs.capabilities, 'iac') || contains(inputs.capabilities, 'container') || contains(inputs.capabilities, 'all')
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/openctem-trivy-cache
+        key: openctem-trivy-${{ runner.os }}-${{ github.run_id }}
+        restore-keys: openctem-trivy-${{ runner.os }}-
+
+    - name: OpenCTEM scan
+      id: run
+      shell: bash
+      env:
+        INPUT_CAPABILITIES: ${{ inputs.capabilities }}
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_TARGET: ${{ inputs.target }}
+        INPUT_IMAGE: ${{ inputs.image }}
+        INPUT_SEMGREP_CONFIG: ${{ inputs.semgrep-config }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_ENFORCE: ${{ inputs.enforce }}
+        INPUT_AGGREGATE: ${{ inputs.aggregate }}
+        INPUT_SKIP_GATE: ${{ inputs.skip-gate }}
+        INPUT_COMMAND: ${{ inputs.command }}
+        INPUT_STATUS_DIR: ${{ inputs.status-dir }}
+        INPUT_IMAGE_TAG: ${{ inputs.image-tag }}
+        INPUT_SCANNER_IMAGE: ${{ inputs.scanner-image }}
+        INPUT_VERIFY_SIGNATURE: ${{ inputs.verify-signature }}
+        ACTION_REF: ${{ github.action_ref }}
+        OPENCTEM_API_URL: ${{ inputs.api-url }}
+        OPENCTEM_TENANT_ID: ${{ inputs.tenant-id }}
+        OPENCTEM_OIDC_AUDIENCE: ${{ inputs.oidc-audience }}
+      run: bash "${GITHUB_ACTION_PATH}/scripts/github-action.sh"
+
+    - name: Upload SARIF to code scanning
+      if: always() && inputs.upload-sarif == 'true' && inputs.command == 'scan' && steps.run.outputs.sarif-dir != ''
+      uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+      with:
+        sarif_file: ${{ steps.run.outputs.sarif-dir }}
