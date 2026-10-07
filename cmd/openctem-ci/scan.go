@@ -225,6 +225,9 @@ func (s *scanJob) convert(ctx context.Context, res *scanner.Result, known []stri
 			break
 		}
 	}
+	if res.Format == importer.FormatTrivy && s.c.Target == capability.TargetRepository {
+		locateTrivyTargets(r)
+	}
 	st := scope.Apply(r, scope.Options{Repository: s.info.Repository, TargetRel: targetRel, TargetAbs: targetAbs,
 		RepositoryPaths: s.c.Target == capability.TargetRepository})
 	if st.PathsCleared > 0 {
@@ -318,6 +321,28 @@ func (s *scanJob) writeOutputs(report *ctis.Report, ctisJSON []byte, known []str
 		}
 	}
 	return nil
+}
+
+// locateTrivyTargets gives a trivy file-system finding the file it was
+// found in (the manifest, lock file or configuration file trivy names as
+// the result target) when the finding has no location: code hosts and
+// GitLab place every finding on a file. The path is normalized and kept
+// inside the repository by scope.Apply afterwards.
+func locateTrivyTargets(r *ctis.Report) {
+	for i := range r.Findings {
+		f := &r.Findings[i]
+		if f.Location != nil && f.Location.Path != "" {
+			continue
+		}
+		t := strings.TrimSpace(f.SourceExtra["target"])
+		if t == "" || t == "." {
+			continue
+		}
+		if f.Location == nil {
+			f.Location = &ctis.FindingLocation{}
+		}
+		f.Location.Path = t
+	}
 }
 
 // operatingSystem is the image's operating system as the scanner reported it.

@@ -13,6 +13,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/openctemio/ctis"
 )
 
 const rawSecret = "Zq8vT3xK9mB2nR7wL4pY6sD1fH5jC0gA"
@@ -331,5 +333,22 @@ func TestReadStatusesRefusesDuplicatesAndJunk(t *testing.T) {
 	w("x.status.json", `{"capability":"sast","ok":true,"tally":{"severity":{"high":-5}}}`)
 	if _, err := readStatuses(dir); err == nil {
 		t.Error("a negative tally accepted")
+	}
+}
+
+// A trivy file-system finding is placed on the file trivy names as its
+// target, so code hosts and GitLab can show it; a finding with a location
+// keeps it.
+func TestLocateTrivyTargets(t *testing.T) {
+	r := &ctis.Report{Findings: []ctis.Finding{
+		{SourceExtra: map[string]string{"target": "app/requirements.txt"}},
+		{SourceExtra: map[string]string{"target": "x"}, Location: &ctis.FindingLocation{Path: "keep.go"}},
+		{SourceExtra: map[string]string{"target": "."}},
+		{},
+	}}
+	locateTrivyTargets(r)
+	if r.Findings[0].Location.Path != "app/requirements.txt" || r.Findings[1].Location.Path != "keep.go" ||
+		r.Findings[2].Location != nil || r.Findings[3].Location != nil {
+		t.Fatalf("%+v", r.Findings)
 	}
 }
