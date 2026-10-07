@@ -1,0 +1,22 @@
+[
+  {
+    "Description": "Generic API Key",
+    "StartLine": 2,
+    "EndLine": 2,
+    "StartColumn": 1,
+    "EndColumn": 44,
+    "Match": "api_key = \"Zq8vT3xK9mB2nR7wL4pY6sD1fH5jC0gA\"",
+    "Secret": "Zq8vT3xK9mB2nR7wL4pY6sD1fH5jC0gA",
+    "File": "app/settings.py",
+    "SymlinkFile": "",
+    "Commit": "",
+    "Entropy": 4.9,
+    "Author": "",
+    "Email": "",
+    "Date": "",
+    "Message": "",
+    "Tags": [],
+    "RuleID": "generic-api-key",
+    "Fingerprint": "app/settings.py:generic-api-key:2"
+  }
+]
