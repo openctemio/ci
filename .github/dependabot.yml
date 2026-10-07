@@ -1,7 +1,7 @@
 # Tool and base-image versions are bumped automatically:
 # - docker: the tool images (trivy, betterleaks) and the base images in
 #   images/*/Dockerfile, tag and digest together (all on docker.io or ghcr.io);
-# - pip: semgrep and its hash-pinned dependency set (images/semgrep/requirements.txt);
+# - pip: semgrep (images/semgrep/requirements.in), re-locked with hashes in requirements.txt;
 # - gomod: Go modules (openctemio modules must stay on their main branch:
 #   the deps-on-main CI job checks every bump);
 # - github-actions: the SHA-pinned actions.
@@ -27,17 +27,18 @@ updates:
       - dependency-name: "betterleaks/betterleaks"
         update-types: ["version-update:semver-major"]
 
+  # semgrep only (requirements.in): Dependabot re-locks requirements.txt with
+  # pip-compile, so the dependency set moves with semgrep as one tested set.
   - package-ecosystem: pip
     directory: "/images/semgrep"
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 2
     commit-message:
       prefix: "deps(semgrep)"
-    groups:
-      semgrep:
-        patterns: ["*"]
+    allow:
+      - dependency-type: direct
 
   - package-ecosystem: gomod
     directory: "/"
