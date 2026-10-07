@@ -1,0 +1,66 @@
+# Tool and base-image versions are bumped automatically:
+# - docker: the tool images (trivy, betterleaks) and the base images in
+#   images/*/Dockerfile, tag and digest together (all on docker.io or ghcr.io);
+# - pip: semgrep and its hash-pinned dependency set (images/semgrep/requirements.txt);
+# - gomod: Go modules (openctemio modules must stay on their main branch:
+#   the deps-on-main CI job checks every bump);
+# - github-actions: the SHA-pinned actions.
+# Every bump runs the Images workflow, which builds and smoke-tests each image
+# before anything can merge.
+version: 2
+updates:
+  - package-ecosystem: docker
+    directories: ["/images/semgrep", "/images/trivy", "/images/betterleaks", "/images/all"]
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "deps(images)"
+    groups:
+      # One PR moves every Dockerfile at once, so the pins stay identical
+      # (scripts/check-image-pins.sh).
+      images:
+        patterns: ["*"]
+    ignore:
+      # betterleaks v2 changes the JSON report the importer reads.
+      - dependency-name: "betterleaks/betterleaks"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: pip
+    directory: "/images/semgrep"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(semgrep)"
+    groups:
+      semgrep:
+        patterns: ["*"]
+
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(go)"
+    groups:
+      go:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(actions)"
+    groups:
+      actions:
+        patterns: ["*"]
+        update-types: [minor, patch]
