@@ -1,0 +1,8 @@
+# semgrep for the ci-semgrep and ci images. requirements.txt is its whole
+# dependency set, locked with the sha256 of every published file
+# (pip-compile --generate-hashes; pip install --require-hashes --no-deps).
+# Dependabot bumps this pin and re-locks requirements.txt as one set: bumping
+# the locked packages one by one breaks semgrep (its dependencies move in
+# step). The image build runs semgrep --version and the Images workflow
+# smoke-tests a scan.
+semgrep==1.179.0
