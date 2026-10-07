@@ -1,0 +1,46 @@
+// OpenCTEM CI scanning on Jenkins: one parallel stage per capability, then
+// one gate. Scan only (SARIF, GitLab-format reports and the local gate);
+// see examples/README.md for reporting to OpenCTEM.
+//
+// Needs an agent with Docker. Images are pinned by digest
+// (scripts/pin-images.sh rewrites them on a release).
+
+def ciImage = 'ghcr.io/openctemio/ci:edge@sha256:2887311f4510e20e0cac51be11802bcbb97bdc66dc16274974ef88871e5016ad'
+
+def openctem(String image, String args) {
+    // Read-only root, no capabilities, the agent's user; the checkout is
+    // mounted at /src and reports go to openctem-out/.
+    sh """
+      mkdir -p openctem-out
+      docker run --rm --read-only --tmpfs /tmp --tmpfs /home/openctem:uid=\$(id -u),gid=\$(id -g) \
+        --user \$(id -u):\$(id -g) --cap-drop ALL --security-opt no-new-privileges \
+        -v "\$WORKSPACE:/src" -w /src \
+        -e OPENCTEM_WORKSPACE=/src \
+        -e OPENCTEM_REPOSITORY="\$(echo "\$GIT_URL" | sed -E 's#^(https?://|git@)##; s#:#/#; s#\\.git\$##')" \
+        -e OPENCTEM_COMMIT="\$GIT_COMMIT" -e OPENCTEM_BRANCH="\${BRANCH_NAME:-\$GIT_BRANCH}" \
+        -e OPENCTEM_PULL_REQUEST="\${CHANGE_ID:-}" -e OPENCTEM_TARGET_BRANCH="\${CHANGE_TARGET:-}" \
+        -e OPENCTEM_FAIL_ON=high \
+        ${image} ${args}
+    """
+}
+
+pipeline {
+    agent any
+    options { timeout(time: 45, unit: 'MINUTES') }
+    stages {
+        stage('OpenCTEM scans') {
+            parallel {
+                stage('sast')    { steps { script { openctem(ciImage, 'scan --capability sast    --aggregate --sarif /src/openctem-out/sast.sarif    --status /src/openctem-out/sast.status.json') } } }
+                stage('sca')     { steps { script { openctem(ciImage, 'scan --capability sca     --aggregate --sarif /src/openctem-out/sca.sarif     --status /src/openctem-out/sca.status.json') } } }
+                stage('secrets') { steps { script { openctem(ciImage, 'scan --capability secrets --aggregate --sarif /src/openctem-out/secrets.sarif --status /src/openctem-out/secrets.status.json') } } }
+                stage('iac')     { steps { script { openctem(ciImage, 'scan --capability iac     --aggregate --sarif /src/openctem-out/iac.sarif     --status /src/openctem-out/iac.status.json') } } }
+            }
+        }
+        stage('OpenCTEM gate') {
+            steps { script { openctem(ciImage, 'gate --status-dir /src/openctem-out --expect sast,sca,secrets,iac') } }
+        }
+    }
+    post {
+        always { archiveArtifacts artifacts: 'openctem-out/**', allowEmptyArchive: true }
+    }
+}
