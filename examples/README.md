@@ -28,7 +28,7 @@ CI system it reads `OPENCTEM_*` variables:
 | Variable | Meaning |
 |---|---|
 | `OPENCTEM_WORKSPACE` | the checkout directory (also honored on the systems above, for a checkout mounted elsewhere in a container) |
-| `OPENCTEM_REPOSITORY` | `host/owner/name`, e.g. `bitbucket.org/acme/app` |
+| `OPENCTEM_REPOSITORY` | `host/owner/name`, e.g. `bitbucket.org/example/app` |
 | `OPENCTEM_COMMIT`, `OPENCTEM_BRANCH`, `OPENCTEM_DEFAULT_BRANCH` | the revision |
 | `OPENCTEM_PULL_REQUEST`, `OPENCTEM_TARGET_BRANCH` | the pull request, if any |
 | `OPENCTEM_FORK` | `true` for a change from a fork |
@@ -36,7 +36,7 @@ CI system it reads `OPENCTEM_*` variables:
 ## Hardening used
 
 `docker run --read-only --cap-drop ALL --security-opt no-new-privileges`,
-the agent's own user, a tmpfs `/tmp` and `$HOME`, and the checkout mounted
+the CI agent's own user (not root), a tmpfs `/tmp` and `$HOME`, and the checkout mounted
 at `/src`. Images are pinned by digest on each release
 (`scripts/pin-images.sh`); verify a digest yourself as shown in
 `docs/images.md`.
