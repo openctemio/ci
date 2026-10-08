@@ -13,7 +13,7 @@ Every pipeline needs two variables, neither of them a secret:
 | `OPENCTEM_API_URL` | the OpenCTEM URL (https) |
 | `OPENCTEM_TENANT_ID` | your OpenCTEM organization id; without it the job scans only |
 
-and a **CI trust** in OpenCTEM (CI/CD > Trust and gate > Add trust) for the
+and a **CI trust** in OpenCTEM (**CI/CD > Trust and gate > Add trust**) for the
 CI organization, workspace or Jenkins issuer. The trust dialog can check a
 sample token from a job before you save it.
 
