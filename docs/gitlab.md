@@ -12,7 +12,7 @@ Templates in `gitlab/templates/`:
 
 ```yaml
 include:
-  - remote: https://raw.githubusercontent.com/openctemio/ci/v1/gitlab/templates/all.yml
+  - remote: https://raw.githubusercontent.com/openctemio/ci/v0.1.0/gitlab/templates/all.yml
 
 variables:
   OPENCTEM_API_URL: https://openctem.example.com
@@ -44,7 +44,7 @@ security tab. A SARIF file and the job status are kept as artifacts.
 Each job requests an ID token with `id_tokens: OPENCTEM_ID_TOKEN` and the
 audience `openctem:tenant:$OPENCTEM_TENANT_ID`, and `openctem-ci` exchanges it
 once for a run token of at most 15 minutes. Add a GitLab trust configuration
-in OpenCTEM (Settings > Scanning > CI pipelines) for your GitLab issuer.
+in OpenCTEM (**CI/CD > Trust and gate**) for your GitLab issuer.
 A merge request from a fork never uploads (the job scans only).
 
 ## Rules
