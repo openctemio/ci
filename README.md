@@ -1,6 +1,7 @@
 # OpenCTEM CI
 
-Security scanning for CI pipelines that reports to [OpenCTEM](https://github.com/openctemio).
+Security scanning for CI pipelines that reports to [OpenCTEM](https://openctem.io).
+Product documentation: <https://docs.openctem.io>.
 
 - `openctem-ci`: a one-shot binary that runs one scan capability on the
   checked-out repository, converts the result to CTIS, uploads it to an
@@ -30,6 +31,30 @@ openctem-ci scan --capability sast \
   --gitlab-report gl-sast-report.json
 ```
 
+Commands: `scan` (run one capability), `gate` (judge the status files of
+several capability jobs, the final job of a pipeline), `capabilities` (list
+the capabilities, their tools and images) and `version`.
+`openctem-ci <command> -h` prints the flags of a command.
+
+`scan` flags:
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--capability` | `$OPENCTEM_CAPABILITY` | the one capability to run |
+| `--target` | `.` | directory to scan, inside the workspace |
+| `--image` | | image reference to scan (`container`) |
+| `--semgrep-config` | `$OPENCTEM_SEMGREP_CONFIG`, else `p/default` | semgrep rules: a registry pack or a path in the repository |
+| `--sarif`, `--gitlab-report`, `--ctis` | | write SARIF, a GitLab security report or the CTIS report to this file |
+| `--status` | | write the job status for a later `gate` job to this file |
+| `--fail-on` | `$OPENCTEM_FAIL_ON` | local gate threshold (`critical`, `high`, `medium`, `low`, `info`), used when the platform gate cannot decide |
+| `--no-push` | `false` | scan and write files only; do not upload |
+| `--aggregate` | `false` | report into the run shared by all capability jobs of this pipeline; a final `gate` job decides |
+| `--timeout` | `30m` | tool timeout |
+
+`gate` flags: `--status-dir` (default `.`), `--expect` (capabilities that
+must have reported, default `$OPENCTEM_CAPABILITIES`), `--fail-on`, and
+`--no-push` (decide locally with `--fail-on`).
+
 | Variable | Meaning |
 |---|---|
 | `OPENCTEM_API_URL` | OpenCTEM URL (https) |
@@ -55,6 +80,10 @@ Design, identity and threat model: [docs/architecture.md](docs/architecture.md).
 go test ./...
 go build -o openctem-ci ./cmd/openctem-ci
 ```
+
+## Security
+
+Report vulnerabilities privately; see [SECURITY.md](SECURITY.md).
 
 ## License
 

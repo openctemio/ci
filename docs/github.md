@@ -13,7 +13,7 @@ on:
 
 jobs:
   openctem:
-    uses: openctemio/ci/.github/workflows/scan.yml@v1
+    uses: openctemio/ci/.github/workflows/scan.yml@v0.1.0   # a release tag, or a commit
     with:
       capabilities: sast,sca,secrets,iac
       api-url: https://openctem.example.com
@@ -29,7 +29,11 @@ Every capability runs in its own job and image, in parallel, and reports
 into **one** OpenCTEM CI run; a final `gate` job asks the platform gate for
 the verdict on all of them. A capability job that fails, is cancelled or does
 not upload fails the gate. The workflow runs the action of its own commit
-(`job.workflow_sha`), so `@v1.2.3` is fully pinned.
+(`job.workflow_sha`), so a release tag such as `@v0.1.0` is fully pinned.
+
+Pin to a full release tag (`vX.Y.Z`) or a commit. By default the images
+run with the tag of the action or workflow ref when it is a release tag,
+else `edge`; set `image-tag` when you pin to a commit.
 
 ## Action: one job
 
@@ -44,7 +48,7 @@ jobs:
       - uses: actions/checkout@<sha> # pin actions by commit
         with:
           persist-credentials: false
-      - uses: openctemio/ci@v1
+      - uses: openctemio/ci@v0.1.0   # a release tag, or a commit
         with:
           capabilities: sast,secrets
           api-url: https://openctem.example.com
@@ -56,6 +60,8 @@ are judged once.
 
 ## Inputs
 
+Inputs of both the action and the reusable workflow:
+
 | Input | Default | |
 |---|---|---|
 | `capabilities` | `sast,sca,secrets` | `sast`, `sca`, `secrets`, `iac`, `container`, or `all` |
@@ -66,12 +72,24 @@ are judged once.
 | `fail-on` | | local gate threshold when the platform gate cannot decide |
 | `enforce` | `true` | `false`: a failing gate does not fail the job (a scan error still does) |
 | `upload-sarif` | `false` | upload SARIF to GitHub code scanning (`security-events: write`) |
-| `semgrep-config` | `p/default` | semgrep rule pack or a path in the repository |
-| `image-tag` | the action version, else `edge` | image tag |
+| `image-tag` | the action or workflow version, else `edge` | image tag |
+| `scanner-image` | | run this image for every capability instead of the per-tool images (testing a build) |
 | `verify-signature` | `true` | resolve the tag to a digest, verify its cosign signature, run the digest |
 
-Outputs: `exit-code` (0 pass, 1 gate failed, 2 a scan cannot be trusted),
-`sarif-dir`, `status-dir`.
+Inputs of the action only:
+
+| Input | Default | |
+|---|---|---|
+| `path` | `.` | directory of the checkout, relative to the workspace |
+| `semgrep-config` | `p/default` | semgrep rule pack or a path in the repository |
+| `aggregate` | `auto` | `auto` (several capabilities report into one run and one gate decides), `true` or `false` |
+| `skip-gate` | `false` | with `aggregate`: do not run the gate here (a later job runs `command: gate`) |
+| `command` | `scan` | `scan`, or `gate` (judge the status files of earlier capability jobs in `status-dir`) |
+| `status-dir` | | `command: gate`: directory, relative to the workspace, holding the `*.status.json` files |
+
+Outputs of the action: `exit-code` (0 pass, 1 gate failed, 2 a scan cannot
+be trusted), `sarif-dir`, `status-dir`. The reusable workflow outputs
+`exit-code`.
 
 ## Security notes
 
