@@ -58,6 +58,13 @@ jobs:
 Several capabilities run in sequence in the job, report into one run and
 are judged once.
 
+On pull requests `sast` is diff-aware: it reports only findings new since
+the merge base with the target branch. Check out with `fetch-depth: 0` for
+that (the reusable workflow does it for the sast job); with a shallow
+checkout the scan runs in full and says so. `diff: off` (or
+`OPENCTEM_DIFF=off`) always scans in full. Default-branch runs always scan
+in full, which keeps OpenCTEM's baseline complete.
+
 ## Inputs
 
 Inputs of both the action and the reusable workflow:

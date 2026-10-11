@@ -52,6 +52,14 @@ A merge request from a fork never uploads (the job scans only).
 The jobs run in merge request pipelines and in branch pipelines, and not
 twice for a branch with an open merge request.
 
+## Diff-aware sast
+
+In a merge request pipeline `openctem-sast` reports only findings new since
+the merge base (`CI_MERGE_REQUEST_DIFF_BASE_SHA`). The commit must be in the
+clone: raise `GIT_DEPTH` on the job (or `0`) for long-lived branches;
+otherwise the job scans in full and says so. `OPENCTEM_DIFF: "off"` always
+scans in full.
+
 ## Cache
 
 The trivy jobs cache the vulnerability database in `.openctem-trivy-cache/`
