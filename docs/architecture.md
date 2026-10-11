@@ -11,7 +11,9 @@ small per-tool image. Both produce the same CTIS reports.
 CI job ── checkout ──▶ openctem-ci scan --capability sast
                          │ 1. read the CI environment (repository, branch, commit, PR/MR, fork)
                          │ 2. resolve the target inside the workspace (symlinks followed)
-                         │ 3. run the tool (fixed argv, filtered env, private temp dir, timeout)
+                         │ 3. run the tool (fixed argv, filtered env, private temp dir, timeout);
+                         │    sast on a pull/merge request is diff-aware (semgrep --baseline-commit
+                         │    at the merge base) when the history is there, else a full scan
                          │ 4. convert its native output to CTIS (ctis/importer)
                          │ 5. scope: one repository asset, repository-relative paths
                          │ 6. redact: mask secrets everywhere, then check every output

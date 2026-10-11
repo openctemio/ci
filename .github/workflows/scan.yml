@@ -49,6 +49,10 @@ on:
         description: 'Local gate threshold, used when the platform gate cannot decide'
         type: string
         default: ''
+      diff:
+        description: 'sast on a pull request: auto (only findings new since the merge base) or off (full scan)'
+        type: string
+        default: 'auto'
       enforce:
         description: 'Fail the workflow when the gate fails (a scan error always fails)'
         type: boolean
@@ -131,6 +135,9 @@ jobs:
         with:
           path: src
           persist-credentials: false
+          # Full history for a pull request's sast job: the diff-aware scan
+          # needs the merge base with the target branch.
+          fetch-depth: ${{ (matrix.capability == 'sast' && startsWith(github.event_name, 'pull_request')) && '0' || '1' }}
       - name: Check out openctemio/ci at this workflow's commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -152,6 +159,7 @@ jobs:
           tenant-id: ${{ inputs.tenant-id }}
           oidc-audience: ${{ inputs.oidc-audience }}
           fail-on: ${{ inputs.fail-on }}
+          diff: ${{ inputs.diff }}
           upload-sarif: ${{ inputs.upload-sarif }}
           image-tag: ${{ needs.plan.outputs.tag }}
           scanner-image: ${{ inputs.scanner-image }}
