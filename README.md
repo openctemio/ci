@@ -50,6 +50,7 @@ the capabilities, their tools and images) and `version`.
 | `--no-push` | `false` | scan and write files only; do not upload |
 | `--aggregate` | `false` | report into the run shared by all capability jobs of this pipeline; a final `gate` job decides |
 | `--timeout` | `30m` | tool timeout |
+| `--diff` | `$OPENCTEM_DIFF`, else `auto` | `sast` on a pull or merge request: `auto` reports only findings new since the merge base with the target branch (needs the history: `fetch-depth: 0`); `off` scans in full |
 
 `gate` flags: `--status-dir` (default `.`), `--expect` (capabilities that
 must have reported, default `$OPENCTEM_CAPABILITIES`), `--fail-on`, and

@@ -39,6 +39,10 @@ type Options struct {
 	// SemgrepConfig replaces the default semgrep rules (a registry pack
 	// such as p/default, or a path in the repository).
 	SemgrepConfig string
+	// BaselineCommit, for sast, makes semgrep report only findings that are
+	// not already in that commit (a pull request's merge base): a diff-aware
+	// scan. Anything but a commit id is ignored.
+	BaselineCommit string
 	// Timeout of the tool (default 30 minutes).
 	Timeout time.Duration
 	// Getenv reads the environment passed on (filtered) to the tool.
@@ -140,8 +144,12 @@ func Command(c capability.Capability, opts Options, out string) ([]string, impor
 		if strings.HasPrefix(cfg, "-") {
 			return nil, "", fmt.Errorf("semgrep config %q must not start with '-'", cfg)
 		}
-		return []string{"semgrep", "scan", "--json", "--output", out, "--config", cfg,
-			"--metrics=off", "--disable-version-check", "--no-rewrite-rule-ids", "--quiet", target}, importer.FormatSemgrep, nil
+		argv := []string{"semgrep", "scan", "--json", "--output", out, "--config", cfg,
+			"--metrics=off", "--disable-version-check", "--no-rewrite-rule-ids", "--quiet"}
+		if CommitID(opts.BaselineCommit) {
+			argv = append(argv, "--baseline-commit", opts.BaselineCommit)
+		}
+		return append(argv, target), importer.FormatSemgrep, nil
 	case "secrets":
 		// --exit-code 0: findings are not an error; the gate decides.
 		// Never --verbose: it prints every raw secret to the log.
@@ -353,3 +361,8 @@ func lastLines(s string, n int) string {
 	}
 	return strings.Join(lines, " | ")
 }
+
+var commitIDRE = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
+
+// CommitID reports whether s is a lower-case hexadecimal commit id.
+func CommitID(s string) bool { return commitIDRE.MatchString(s) }

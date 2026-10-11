@@ -167,17 +167,31 @@ func DetectOIDC(cfg Config) (string, bool) {
 // does not sign: the commit (CircleCI, and Bitbucket or Jenkins tokens
 // without one) and the repository name (Bitbucket). The platform uses them
 // only then, and marks such a commit unverified.
+//
+// base_ref is the pull or merge request's target branch. The platform takes
+// it only to pick the gate's baseline among the repository's release lines
+// (GitHub also signs it), so a wrong value can narrow but never widen what
+// passes.
 func (r *Run) hints() map[string]string {
 	g := r.cfg.Getenv
+	h := map[string]string{}
 	switch r.provider {
+	case ProviderGitHub:
+		h["base_ref"] = g("GITHUB_BASE_REF")
+	case ProviderGitLab:
+		h["base_ref"] = g("CI_MERGE_REQUEST_TARGET_BRANCH_NAME")
+	case ProviderAzureDevOps:
+		h["base_ref"] = strings.TrimPrefix(g("SYSTEM_PULLREQUEST_TARGETBRANCH"), "refs/heads/")
 	case ProviderBitbucket:
-		return map[string]string{"commit_sha": g("BITBUCKET_COMMIT"), "repository": g("BITBUCKET_REPO_FULL_NAME")}
+		h["commit_sha"], h["repository"] = g("BITBUCKET_COMMIT"), g("BITBUCKET_REPO_FULL_NAME")
+		h["base_ref"] = g("BITBUCKET_PR_DESTINATION_BRANCH")
 	case ProviderCircleCI:
-		return map[string]string{"commit_sha": g("CIRCLE_SHA1")}
+		h["commit_sha"] = g("CIRCLE_SHA1")
 	case ProviderJenkins:
-		return map[string]string{"commit_sha": g("GIT_COMMIT")}
+		h["commit_sha"] = g("GIT_COMMIT")
+		h["base_ref"] = g("CHANGE_TARGET")
 	}
-	return nil
+	return h
 }
 
 // Run is one CI run on the platform. The run token is obtained at the
