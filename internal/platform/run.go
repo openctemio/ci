@@ -195,7 +195,13 @@ type Run struct {
 	// usedToken: the job's single token (every provider but GitHub and
 	// Azure) was exchanged.
 	usedToken bool
+	// repoPolicy is the gate part of the repository's .openctem.yml.
+	repoPolicy json.RawMessage
 }
+
+// SetRepoPolicy sends the repository file's gate settings with the verdict
+// request (the platform applies only what is stricter).
+func (r *Run) SetRepoPolicy(raw json.RawMessage) { r.repoPolicy = raw }
 
 // Info is what the platform says about the run.
 type Info struct {
@@ -540,7 +546,11 @@ func (v *Verdict) Failed() bool { return v != nil && v.Verdict == "fail" }
 // the number of scans that failed to run or to report: any fails the run.
 func (r *Run) Evaluate(ctx context.Context, scanFailures int) (*Verdict, error) {
 	var v Verdict
-	if err := r.call(ctx, "evaluate", map[string]int{"scan_failures": scanFailures}, &v); err != nil {
+	body := map[string]any{"scan_failures": scanFailures}
+	if len(r.repoPolicy) > 0 {
+		body["repo_policy"] = r.repoPolicy
+	}
+	if err := r.call(ctx, "evaluate", body, &v); err != nil {
 		return nil, fmt.Errorf("evaluate: %w", err)
 	}
 	return &v, nil

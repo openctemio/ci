@@ -28,6 +28,7 @@ type fakePlatform struct {
 	token     string
 	// noAggregate plays a platform that does not know aggregate runs.
 	noAggregate bool
+	evaluates   []map[string]any
 }
 
 func (f *fakePlatform) handler(t *testing.T) http.Handler {
@@ -57,6 +58,9 @@ func (f *fakePlatform) handler(t *testing.T) http.Handler {
 		case strings.HasSuffix(r.URL.Path, "/results"):
 			_, _ = w.Write([]byte(`{"findings_created":2}`))
 		case strings.HasSuffix(r.URL.Path, "/evaluate"):
+			var eb map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&eb)
+			f.evaluates = append(f.evaluates, eb)
 			_, _ = w.Write([]byte(`{"run_id":"run-1","verdict":"fail","reasons":[{"code":"new_high","message":"::error::forged\nline","file":"a.py","line":3}],"links":{"run":"https://x/ci-runners/run-1"}}`))
 		default:
 			http.NotFound(w, r)
@@ -275,5 +279,19 @@ func TestCheckAPIURL(t *testing.T) {
 func TestSanitize(t *testing.T) {
 	if got := Sanitize("a\nb\x1b[31m::warning::c\u0085"); strings.ContainsAny(got, "\n\x1b\u0085") || strings.Contains(got, "::") {
 		t.Fatalf("%q", got)
+	}
+}
+
+// The repository file's gate settings travel with the verdict request.
+func TestEvaluateSendsRepoPolicy(t *testing.T) {
+	f := &fakePlatform{}
+	r := newRun(t, f, false)
+	r.SetRepoPolicy([]byte(`{"fail_on_severity":"medium"}`))
+	if _, err := r.Evaluate(context.Background(), 0); err != nil {
+		t.Fatal(err)
+	}
+	rp, _ := f.evaluates[len(f.evaluates)-1]["repo_policy"].(map[string]any)
+	if rp["fail_on_severity"] != "medium" {
+		t.Fatalf("evaluate body = %+v", f.evaluates)
 	}
 }

@@ -23,6 +23,7 @@ import (
 	"github.com/openctemio/ci/internal/gitlab"
 	"github.com/openctemio/ci/internal/platform"
 	"github.com/openctemio/ci/internal/redact"
+	"github.com/openctemio/ci/internal/repopolicy"
 	"github.com/openctemio/ci/internal/sarif"
 	"github.com/openctemio/ci/internal/scanner"
 	"github.com/openctemio/ci/internal/scope"
@@ -114,6 +115,16 @@ func (s *scanJob) run(ctx context.Context) int {
 		}
 	}
 	s.openRun()
+	if s.pr != nil {
+		raw, name, err := repopolicy.Load(s.info.Workspace)
+		if err != nil {
+			return s.fail(ctx, err)
+		}
+		if raw != nil {
+			s.pr.SetRepoPolicy(raw)
+			s.logf("Gate settings from %s are sent with the verdict request (they can only tighten the gate).", name)
+		}
+	}
 
 	start := time.Now()
 	res, err := scanner.Run(ctx, s.c, scanner.Options{Target: targetAbs, Image: strings.TrimSpace(s.f.image),
