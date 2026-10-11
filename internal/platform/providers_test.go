@@ -31,7 +31,8 @@ func TestAzureMintsAndRenews(t *testing.T) {
 	srv := httptest.NewTLSServer(mux)
 	defer srv.Close()
 	env := map[string]string{"TF_BUILD": "True", "SYSTEM_OIDCREQUESTURI": srv.URL + "/org/proj/_apis/oidctoken",
-		"SYSTEM_ACCESSTOKEN": "job-access-token", EnvTenantID: "t1", EnvAPIURL: srv.URL}
+		"SYSTEM_ACCESSTOKEN": "job-access-token", EnvTenantID: "t1", EnvAPIURL: srv.URL,
+		"SYSTEM_PULLREQUEST_TARGETBRANCH": "refs/heads/main"}
 	cfg := ConfigFromEnv(func(k string) string { return env[k] })
 	cfg.HTTPClient = srv.Client()
 	r, err := New(cfg)
@@ -41,7 +42,8 @@ func TestAzureMintsAndRenews(t *testing.T) {
 	if _, err := r.Upload(context.Background(), &ctis.Report{}); err != nil {
 		t.Fatal(err)
 	}
-	if len(f.exchanges) != 1 || f.exchanges[0]["id_token"] != "az-oidc-jwt" || f.exchanges[0]["commit_sha"] != nil {
+	if len(f.exchanges) != 1 || f.exchanges[0]["id_token"] != "az-oidc-jwt" || f.exchanges[0]["commit_sha"] != nil ||
+		f.exchanges[0]["base_ref"] != "main" {
 		t.Fatalf("exchanges %+v", f.exchanges)
 	}
 	r.mu.Lock()
@@ -62,7 +64,8 @@ func TestAzureErrorsCarryNoToken(t *testing.T) {
 	}))
 	defer srv.Close()
 	env := map[string]string{"TF_BUILD": "True", "SYSTEM_OIDCREQUESTURI": srv.URL + "/oidc",
-		"SYSTEM_ACCESSTOKEN": "job-access-token", EnvTenantID: "t1", EnvAPIURL: srv.URL}
+		"SYSTEM_ACCESSTOKEN": "job-access-token", EnvTenantID: "t1", EnvAPIURL: srv.URL,
+		"SYSTEM_PULLREQUEST_TARGETBRANCH": "refs/heads/main"}
 	cfg := ConfigFromEnv(func(k string) string { return env[k] })
 	cfg.HTTPClient = srv.Client()
 	r, err := New(cfg)
@@ -91,17 +94,17 @@ func TestSingleTokenProviders(t *testing.T) {
 	}{
 		"bitbucket": {
 			env: map[string]string{"BITBUCKET_BUILD_NUMBER": "7", "BITBUCKET_STEP_OIDC_TOKEN": "bb-jwt",
-				"BITBUCKET_COMMIT": "c0ffee", "BITBUCKET_REPO_FULL_NAME": "acme/api"},
+				"BITBUCKET_COMMIT": "c0ffee", "BITBUCKET_REPO_FULL_NAME": "acme/api", "BITBUCKET_PR_DESTINATION_BRANCH": "release/2"},
 			provider: ProviderBitbucket, token: "bb-jwt",
-			hints: map[string]string{"commit_sha": "c0ffee", "repository": "acme/api"},
+			hints: map[string]string{"commit_sha": "c0ffee", "repository": "acme/api", "base_ref": "release/2"},
 		},
 		"circleci": {
 			env:      map[string]string{"CIRCLECI": "true", "OPENCTEM_ID_TOKEN": "cc-jwt", "CIRCLE_SHA1": "beef"},
 			provider: ProviderCircleCI, token: "cc-jwt", hints: map[string]string{"commit_sha": "beef"},
 		},
 		"jenkins": {
-			env:      map[string]string{"JENKINS_URL": "https://ci.example/", "OPENCTEM_ID_TOKEN": "jk-jwt", "GIT_COMMIT": "f00d"},
-			provider: ProviderJenkins, token: "jk-jwt", hints: map[string]string{"commit_sha": "f00d"},
+			env:      map[string]string{"JENKINS_URL": "https://ci.example/", "OPENCTEM_ID_TOKEN": "jk-jwt", "GIT_COMMIT": "f00d", "CHANGE_TARGET": "main"},
+			provider: ProviderJenkins, token: "jk-jwt", hints: map[string]string{"commit_sha": "f00d", "base_ref": "main"},
 		},
 	}
 	for name, tc := range cases {

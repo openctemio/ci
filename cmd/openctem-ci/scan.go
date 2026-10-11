@@ -41,6 +41,7 @@ type scanFlags struct {
 	noPush        bool
 	aggregate     bool
 	timeout       time.Duration
+	diff          string
 }
 
 func cmdScan(ctx context.Context, args []string, stdout, stderr io.Writer, e env) int {
@@ -59,6 +60,7 @@ func cmdScan(ctx context.Context, args []string, stdout, stderr io.Writer, e env
 	fs.BoolVar(&f.noPush, "no-push", false, "do not upload to OpenCTEM (scan and write files only)")
 	fs.BoolVar(&f.aggregate, "aggregate", false, "report into the run shared by all capability jobs of this pipeline; a final 'gate' job decides")
 	fs.DurationVar(&f.timeout, "timeout", 30*time.Minute, "tool timeout")
+	fs.StringVar(&f.diff, "diff", nonEmptyEnv(e.getenv("OPENCTEM_DIFF"), "auto"), "sast on a pull or merge request: auto (only findings new since the merge base) or off (full scan)")
 	if err := fs.Parse(args); err != nil {
 		return gate.ExitError
 	}
@@ -72,6 +74,10 @@ func cmdScan(ctx context.Context, args []string, stdout, stderr io.Writer, e env
 			err = errors.New("scan runs exactly one capability; run one job per capability")
 		}
 		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+		return gate.ExitError
+	}
+	if f.diff != "auto" && f.diff != "off" {
+		_, _ = fmt.Fprintf(stderr, "Error: --diff must be auto or off\n")
 		return gate.ExitError
 	}
 	if f.failOn != "" && !gate.ValidThreshold(f.failOn) {
@@ -92,6 +98,15 @@ type scanJob struct {
 	info   ciinfo.Info
 	pr     *platform.Run
 	status status
+	gitFn  gitRunner
+}
+
+// git is the git runner (tests replace scanJob.gitFn).
+func (s *scanJob) git() gitRunner {
+	if s.gitFn != nil {
+		return s.gitFn
+	}
+	return runGit
 }
 
 func (s *scanJob) logf(format string, a ...any) { _, _ = fmt.Fprintf(s.stdout, format+"\n", a...) }
@@ -115,9 +130,16 @@ func (s *scanJob) run(ctx context.Context) int {
 	}
 	s.openRun()
 
+	baseline := ""
+	if s.c.Name == "sast" {
+		var note string
+		baseline, note = baselineCommit(ctx, s.f.diff, s.info, s.e.getenv, s.git())
+		s.logf("[%s] %s", s.c.Tool, note)
+	}
+
 	start := time.Now()
 	res, err := scanner.Run(ctx, s.c, scanner.Options{Target: targetAbs, Image: strings.TrimSpace(s.f.image),
-		SemgrepConfig: s.f.semgrepConfig, Timeout: s.f.timeout, Environ: s.e.environ, Stderr: s.stderr})
+		SemgrepConfig: s.f.semgrepConfig, BaselineCommit: baseline, Timeout: s.f.timeout, Environ: s.e.environ, Stderr: s.stderr})
 	if err != nil {
 		return s.fail(ctx, err)
 	}
@@ -483,4 +505,11 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n]
+}
+
+func nonEmptyEnv(v, fallback string) string {
+	if strings.TrimSpace(v) == "" {
+		return fallback
+	}
+	return strings.TrimSpace(v)
 }
