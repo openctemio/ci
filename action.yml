@@ -51,6 +51,9 @@ inputs:
   fail-on:
     description: 'Local gate threshold (critical, high, medium, low, info), used when the platform gate cannot decide'
     default: ''
+  diff:
+    description: 'sast on a pull request: auto (only findings new since the merge base; check out with fetch-depth: 0) or off (full scan)'
+    default: 'auto'
   enforce:
     description: 'Fail the job when the gate fails (false: report only; a scan error always fails)'
     default: 'true'
@@ -115,6 +118,7 @@ runs:
         INPUT_IMAGE: ${{ inputs.image }}
         INPUT_SEMGREP_CONFIG: ${{ inputs.semgrep-config }}
         INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_DIFF: ${{ inputs.diff }}
         INPUT_ENFORCE: ${{ inputs.enforce }}
         INPUT_AGGREGATE: ${{ inputs.aggregate }}
         INPUT_SKIP_GATE: ${{ inputs.skip-gate }}

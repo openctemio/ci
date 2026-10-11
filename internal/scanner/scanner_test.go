@@ -158,3 +158,20 @@ func TestParseVersion(t *testing.T) {
 		}
 	}
 }
+
+// A diff-aware sast scan passes the merge base to semgrep; anything but a
+// commit id is dropped.
+func TestCommandBaselineCommit(t *testing.T) {
+	sast := capOf(t, "sast")
+	base := strings.Repeat("b", 40)
+	argv, _, err := Command(sast, Options{BaselineCommit: base}, "out.json")
+	if err != nil || !strings.Contains(strings.Join(argv, " "), "--baseline-commit "+base+" .") {
+		t.Fatalf("argv = %v %v", argv, err)
+	}
+	for _, bad := range []string{"--help", "HEAD", "abc", strings.Repeat("g", 40)} {
+		argv, _, _ = Command(sast, Options{BaselineCommit: bad}, "out.json")
+		if strings.Contains(strings.Join(argv, " "), "--baseline-commit") {
+			t.Fatalf("baseline %q used: %v", bad, argv)
+		}
+	}
+}

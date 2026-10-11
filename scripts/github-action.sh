@@ -16,6 +16,8 @@ caps_in="${INPUT_CAPABILITIES:-sast,sca,secrets}"
 path_in="${INPUT_PATH:-.}"
 target_in="${INPUT_TARGET:-.}"
 fail_on="${INPUT_FAIL_ON:-}"
+diff_in="${INPUT_DIFF:-auto}"
+case "$diff_in" in auto|off) ;; *) die "diff must be auto or off" ;; esac
 enforce="${INPUT_ENFORCE:-true}"
 aggregate_in="${INPUT_AGGREGATE:-auto}"
 image_override="${INPUT_SCANNER_IMAGE:-}"
@@ -132,7 +134,7 @@ run_ci() {
     -e GITHUB_ACTIONS -e GITHUB_REPOSITORY -e GITHUB_SHA -e GITHUB_REF -e GITHUB_HEAD_REF -e GITHUB_BASE_REF \
     -e GITHUB_EVENT_NAME -e GITHUB_SERVER_URL -e GITHUB_EVENT_PATH=/github/event.json \
     -e GITHUB_WORKSPACE=/src -e GITHUB_STEP_SUMMARY=/github/summary \
-    -e OPENCTEM_FAIL_ON="$fail_on" -e OPENCTEM_SEMGREP_CONFIG="$semgrep_config" \
+    -e OPENCTEM_FAIL_ON="$fail_on" -e OPENCTEM_DIFF="$diff_in" -e OPENCTEM_SEMGREP_CONFIG="$semgrep_config" \
     "${report_env[@]}" \
     "$image" "$@"
 }
