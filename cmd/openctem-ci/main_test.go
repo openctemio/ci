@@ -352,3 +352,15 @@ func TestLocateTrivyTargets(t *testing.T) {
 		t.Fatalf("%+v", r.Findings)
 	}
 }
+
+func TestImageDigest(t *testing.T) {
+	d := "sha256:" + strings.Repeat("ab", 32)
+	if got := ImageDigest("ghcr.io/acme/api@" + d); got != d {
+		t.Fatalf("got %q", got)
+	}
+	for _, bad := range []string{"", "ghcr.io/acme/api:latest", "sha256:abc", "x@sha256:" + strings.Repeat("g", 64)} {
+		if got := ImageDigest(bad); got != "" {
+			t.Fatalf("%q gave %q", bad, got)
+		}
+	}
+}
