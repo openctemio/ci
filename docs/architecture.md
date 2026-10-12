@@ -40,6 +40,10 @@ taxonomy ids (`ctis/capability`), checked by a test.
 | `iac` | `iac.misconfig@1` | trivy (`config`) | `ghcr.io/openctemio/ci-trivy` | `sast` |
 | `container` | `container.image@1` | trivy (`image`) | `ghcr.io/openctemio/ci-trivy` | `container_scanning` |
 
+A `container` report carries the image reference (`metadata.properties.container_image`)
+and its content digest (`image_digest`, from the registry digest trivy reports), so
+the platform can relate the repository to the workloads running that exact image.
+
 `all` selects every repository capability (`container` needs `--image` and is
 never implied). `ghcr.io/openctemio/ci` carries every tool.
 

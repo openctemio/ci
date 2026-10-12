@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -242,11 +243,13 @@ func (s *scanJob) convert(ctx context.Context, res *scanner.Result, known []stri
 		s.warnf("[%s] %s", res.Tool, platform.Sanitize(is.String()))
 	}
 	r := out.Report
-	imageOS := ""
+	imageOS, imageDigest := "", ""
 	for _, a := range r.Assets {
-		if v, ok := a.Properties["os"].(string); ok && v != "" {
+		if v, ok := a.Properties["os"].(string); ok && v != "" && imageOS == "" {
 			imageOS = v
-			break
+		}
+		if v, ok := a.Properties["repo_digest"].(string); ok && imageDigest == "" {
+			imageDigest = ImageDigest(v)
 		}
 	}
 	if res.Format == importer.FormatTrivy && s.c.Target == capability.TargetRepository {
@@ -290,6 +293,11 @@ func (s *scanJob) convert(ctx context.Context, res *scanner.Result, known []stri
 		r.Metadata.Properties["container_image"] = strings.TrimSpace(s.f.image)
 		if imageOS != "" {
 			r.Metadata.Properties["image_os"] = imageOS
+		}
+		// The image's content digest lets OpenCTEM link the repository to
+		// the workloads that run this exact image.
+		if imageDigest != "" {
+			r.Metadata.Properties["image_digest"] = imageDigest
 		}
 	}
 	return r, nil
@@ -505,6 +513,14 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n]
+}
+
+var imageDigestRE = regexp.MustCompile(`sha256:[0-9a-f]{64}$`)
+
+// ImageDigest returns the "sha256:<hex>" digest at the end of a repository
+// digest ("registry/name@sha256:..."), or "".
+func ImageDigest(repoDigest string) string {
+	return imageDigestRE.FindString(strings.ToLower(strings.TrimSpace(repoDigest)))
 }
 
 func nonEmptyEnv(v, fallback string) string {
