@@ -69,6 +69,7 @@ scan-only mode: files and the local gate (`--fail-on`), no upload.
 Exit codes: `0` pass, `1` the gate failed, `2` the scan cannot be trusted.
 
 Design, identity and threat model: [docs/architecture.md](docs/architecture.md).
+Repository gate settings: [docs/repository-file.md](docs/repository-file.md).
 
 - GitHub Actions: [docs/github.md](docs/github.md)
 - GitLab CI: [docs/gitlab.md](docs/gitlab.md)

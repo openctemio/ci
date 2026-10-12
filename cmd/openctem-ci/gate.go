@@ -14,6 +14,7 @@ import (
 	"github.com/openctemio/ci/internal/ciinfo"
 	"github.com/openctemio/ci/internal/gate"
 	"github.com/openctemio/ci/internal/platform"
+	"github.com/openctemio/ci/internal/repopolicy"
 )
 
 // cmdGate is the final job of a pipeline that ran several capability jobs
@@ -54,6 +55,15 @@ func cmdGate(ctx context.Context, args []string, stdout, stderr io.Writer, e env
 		cfg.UserAgent = "openctem-ci/" + Version
 		if r, err := platform.New(cfg); err == nil {
 			pr = r
+			raw, name, err := repopolicy.Load(info.Workspace)
+			if err != nil {
+				_, _ = fmt.Fprintf(stderr, "Error: %s\n", platform.Sanitize(err.Error()))
+				return gate.ExitError
+			}
+			if raw != nil {
+				pr.SetRepoPolicy(raw)
+				_, _ = fmt.Fprintf(stdout, "Gate settings from %s are sent with the verdict request (they can only tighten the gate).\n", name)
+			}
 		} else if !errors.Is(err, platform.ErrNoOIDC) {
 			_, _ = fmt.Fprintf(stderr, "Warning: reporting to OpenCTEM is not available: %v\n", err)
 		}
