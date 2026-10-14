@@ -13,7 +13,21 @@ Each image is the tool plus the same `openctem-ci` binary, with
 ## Tags
 
 - `edge`, `sha-<commit>`: built from `main` (and rebuilt weekly for base-image fixes);
-- `vX.Y.Z`, `vX`: releases.
+- `vX.Y.Z`, `vX`: releases (`v0` for the 0.x releases).
+
+## Releasing
+
+The GitLab templates and the examples pin image digests, and a pipeline
+that includes a template from a release tag runs the digests pinned in that
+tag's commit. So the pins are refreshed before the tag, never after:
+
+1. Merge the changes for the release into `main`; wait for the image build.
+2. `scripts/pin-images.sh edge` (verifies each signature, pins the digests
+   built from that `main` commit) and set every usage reference
+   (`openctemio/ci@vX.Y.Z`, `.../ci/vX.Y.Z/gitlab/...`) to the new version;
+   `scripts/check-release-refs.sh` (CI runs it) checks they agree. Merge.
+3. Tag that commit `vX.Y.Z`. The release images carry the same binary as
+   the pinned `edge` digests (the pin commit changes only YAML and docs).
 
 Pin a digest in your pipeline (`ghcr.io/openctemio/ci-semgrep@sha256:...`).
 The GitHub Action and the reusable workflow resolve the tag to its digest,
