@@ -112,3 +112,26 @@ be trusted), `sarif-dir`, `status-dir`. The reusable workflow outputs
   the OIDC request variables are passed only when reporting is on.
 - **Pinned images.** Images are resolved to a digest and their signature is
   verified against `openctemio/ci`'s image workflow before they run.
+
+## Self-hosted runners: proxy and private CA
+
+The action passes the job's `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY`
+(either case) into each scanner container by name, so a proxy URL with
+credentials never appears on a command line. For a private CA (a TLS
+inspecting proxy, an internal OpenCTEM), commit or create a PEM bundle in
+the workspace with every CA the scan must trust, the public roots included,
+and set `ca-bundle`:
+
+```yaml
+      - uses: openctemio/ci@v0.3.0
+        with:
+          capabilities: sast,sca,secrets
+          ca-bundle: .ci/ca-bundle.pem
+```
+
+It is mounted read-only and used for the scanners' downloads (rules,
+vulnerability database) and for the upload to OpenCTEM.
+
+The image signature is checked against the build that made it: an image
+of release `vX.Y.Z` must be signed by this repository's image workflow at
+the tag `vX.Y.Z`, `edge` by its build of `main`.

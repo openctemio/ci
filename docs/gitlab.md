@@ -82,3 +82,19 @@ openctem-gate:
 `scripts/gitlab-local-test.sh` runs `all.yml` as a pipeline with
 gitlab-ci-local on `testdata/fixture` and validates every report against the
 published schemas; the Self-test workflow runs it on every change.
+
+## Self-hosted runners: proxy and private CA
+
+GitLab passes CI/CD variables into the job container, so set the proxy
+and CA as variables (project, group or the runner's `environment`):
+
+```yaml
+variables:
+  HTTPS_PROXY: http://proxy.corp.example:3128
+  NO_PROXY: .corp.example
+  SSL_CERT_FILE: $CI_PROJECT_DIR/.ci/ca-bundle.pem      # every CA the scan must trust, public roots included
+  REQUESTS_CA_BUNDLE: $CI_PROJECT_DIR/.ci/ca-bundle.pem # the same file, for semgrep
+```
+
+`openctem-ci` passes these to the scanners (and nothing else of the job's
+environment) and uses them for the upload to OpenCTEM.

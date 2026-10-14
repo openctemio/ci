@@ -10,6 +10,8 @@
 set -euo pipefail
 
 die() { echo "::error::$*"; exit 2; }
+# shellcheck disable=SC1091
+. "$(dirname "${BASH_SOURCE[0]}")/action-lib.sh"
 
 mode="${INPUT_COMMAND:-scan}"
 caps_in="${INPUT_CAPABILITIES:-sast,sca,secrets}"
@@ -26,6 +28,7 @@ verify="${INPUT_VERIFY_SIGNATURE:-true}"
 container_image="${INPUT_IMAGE:-}"
 semgrep_config="${INPUT_SEMGREP_CONFIG:-}"
 status_dir_in="${INPUT_STATUS_DIR:-}"
+ca_bundle_in="${INPUT_CA_BUNDLE:-}"
 
 # ---- validation ------------------------------------------------------------
 valid_caps="sast sca secrets iac container"
@@ -100,10 +103,14 @@ pin() {
     fi
     [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || die "could not resolve $ref to a digest"
     pinned="${repo}@${digest}"
+    # The default images must be signed by the build of their own tag; an
+    # image named with scanner-image keeps the general identity.
+    local identity
+    if [ -n "$image_override" ]; then identity="$(signer_identity custom)"; else identity="$(signer_identity "$tag")"; fi
     cosign verify "$pinned" \
       --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-      --certificate-identity-regexp '^https://github\.com/openctemio/ci/\.github/workflows/images\.yml@refs/(heads/main|tags/v[0-9.]+)$' \
-      >/dev/null || die "the signature of $pinned does not verify"
+      --certificate-identity-regexp "$identity" \
+      >/dev/null || die "the signature of $pinned does not verify (expected signer: $identity)"
     echo "Verified $pinned" >&2
   fi
   resolved[$ref]="$pinned"
@@ -121,6 +128,14 @@ if [ -n "${OPENCTEM_TENANT_ID:-}" ]; then
   fi
 fi
 
+# Self-hosted runners behind a proxy or a private CA: the proxy variables
+# pass by name, the CA bundle from the workspace is mounted read-only.
+net_args=()
+mapfile -t net_args < <(proxy_env_args)
+ca_args=()
+ca_out="$(ca_bundle_args "${GITHUB_WORKSPACE}" "$ca_bundle_in")" || die "ca-bundle must be a file in the workspace (a relative path without '..')"
+[ -z "$ca_out" ] || mapfile -t ca_args <<<"$ca_out"
+
 run_ci() {
   local image="$1"
   shift
@@ -135,7 +150,7 @@ run_ci() {
     -e GITHUB_EVENT_NAME -e GITHUB_SERVER_URL -e GITHUB_EVENT_PATH=/github/event.json \
     -e GITHUB_WORKSPACE=/src -e GITHUB_STEP_SUMMARY=/github/summary \
     -e OPENCTEM_FAIL_ON="$fail_on" -e OPENCTEM_DIFF="$diff_in" -e OPENCTEM_SEMGREP_CONFIG="$semgrep_config" \
-    "${report_env[@]}" \
+    "${report_env[@]}" "${net_args[@]}" "${ca_args[@]}" \
     "$image" "$@"
 }
 

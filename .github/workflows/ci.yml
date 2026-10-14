@@ -74,6 +74,9 @@ jobs:
       - name: Actions are pinned to commit SHAs
         run: bash .github/scripts/check-action-pins.sh
 
+      - name: Action helpers (signer identity, proxy, CA bundle)
+        run: bash .github/scripts/action-lib.test.sh
+
       - name: Customer identifiers (self-test)
         run: bash .github/scripts/check-customer-identifiers.test.sh >/dev/null
 
