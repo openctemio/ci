@@ -108,6 +108,7 @@ func Run(ctx context.Context, c capability.Capability, opts Options) (*Result, e
 	cmd := exec.CommandContext(ctx, bin, argv[1:]...) // #nosec G204 -- fixed argv from Command, no shell
 	cmd.Env = env
 	cmd.Env = append(cmd.Env, toolEnv(c.Tool, dir, opts.Target)...)
+	cmd.Env = append(cmd.Env, defaultConfigEnv(c.Tool, env)...)
 	if opts.Target != "" {
 		cmd.Dir = opts.Target
 	}
@@ -153,14 +154,18 @@ func Command(c capability.Capability, opts Options, out string) ([]string, impor
 	case "secrets":
 		// --exit-code 0: findings are not an error; the gate decides.
 		// Never --verbose: it prints every raw secret to the log.
+		// --gitleaks-ignore-path points at the private output directory, so
+		// an ignore file committed in the scanned tree is not read
+		// (repoFilesIgnored).
 		return []string{"betterleaks", "dir", target, "--report-format", "json", "--report-path", out,
-			"--exit-code", "0", "--no-banner", "--ignore-gitleaks-allow"}, importer.FormatBetterleaks, nil
+			"--exit-code", "0", "--no-banner", "--ignore-gitleaks-allow",
+			"--gitleaks-ignore-path", filepath.Dir(out)}, importer.FormatBetterleaks, nil
 	case "sca":
 		return []string{"trivy", "fs", "--scanners", "vuln", "--format", "json", "--output", out,
-			"--exit-code", "0", "--quiet", target}, importer.FormatTrivy, nil
+			"--exit-code", "0", "--quiet", "--config", "", "--ignorefile", "", target}, importer.FormatTrivy, nil
 	case "iac":
 		return []string{"trivy", "config", "--format", "json", "--output", out,
-			"--exit-code", "0", "--quiet", target}, importer.FormatTrivy, nil
+			"--exit-code", "0", "--quiet", "--config", "", "--ignorefile", "", target}, importer.FormatTrivy, nil
 	case "container":
 		img := strings.TrimSpace(opts.Image)
 		if err := CheckImageRef(img); err != nil {
@@ -233,6 +238,36 @@ func parseVersion(s string) string {
 	}
 	return ""
 }
+
+// Repository files the scanners would read from the scanned tree by
+// default (trivy.yaml, .trivyignore, .trivyignore.yaml, .gitleaks.toml,
+// .betterleaks.toml, .gitleaksignore, .betterleaksignore) are not read: the
+// tree is the change under review, so a pull request could otherwise raise
+// a severity threshold, skip a manifest or allowlist its own secret and
+// pass the gate. Configuration comes from the pipeline (flags and
+// environment the workflow sets), and exceptions go to the platform
+// (.openctem.yml exception requests, approved there).
+//
+// defaultConfigEnv selects betterleaks' built-in rules unless the pipeline
+// configured betterleaks through its environment: without one of those
+// variables betterleaks reads .betterleaks.toml or .gitleaks.toml from the
+// scanned tree.
+func defaultConfigEnv(tool string, env []string) []string {
+	if tool != "betterleaks" {
+		return nil
+	}
+	for _, kv := range env {
+		k, _, _ := strings.Cut(kv, "=")
+		switch k {
+		case "BETTERLEAKS_CONFIG", "GITLEAKS_CONFIG", "BETTERLEAKS_CONFIG_TOML", "GITLEAKS_CONFIG_TOML":
+			return nil
+		}
+	}
+	return []string{"BETTERLEAKS_CONFIG_TOML=" + builtinBetterleaksConfig}
+}
+
+// builtinBetterleaksConfig is betterleaks' default rule set and nothing else.
+const builtinBetterleaksConfig = "[extend]\nuseDefault = true\n"
 
 // toolEnv is the environment each tool needs on top of the filtered one.
 // The checkout usually belongs to another user than the scanner (a
