@@ -25,6 +25,10 @@ variables:
 
 openctem-sast:
   stage: test
+  variables:
+    # Diff-aware sast compares with the merge base; a shallow clone (the
+    # default depth is 20) often lacks it and falls back to a full scan.
+    GIT_DEPTH: "0"
   image:
     name: ghcr.io/openctemio/ci-semgrep:edge@sha256:fe80bd83d24d6d1fb8f1c6902ca2ed678830a94509d9cfb794509380a96c462c
     entrypoint: [""]

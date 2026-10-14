@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -34,6 +35,10 @@ const maxStderr = 16 << 10
 type Options struct {
 	// Target is the directory to scan (repository capabilities).
 	Target string
+	// Root is the repository root (the workspace) when Target is a
+	// directory inside it; git (semgrep's file list, the baseline commit)
+	// works on the root, so the root is trusted as well.
+	Root string
 	// Image is the image reference to scan (the container capability).
 	Image string
 	// SemgrepConfig replaces the default semgrep rules (a registry pack
@@ -107,7 +112,7 @@ func Run(ctx context.Context, c capability.Capability, opts Options) (*Result, e
 	start := time.Now()
 	cmd := exec.CommandContext(ctx, bin, argv[1:]...) // #nosec G204 -- fixed argv from Command, no shell
 	cmd.Env = env
-	cmd.Env = append(cmd.Env, toolEnv(c.Tool, dir, opts.Target)...)
+	cmd.Env = append(cmd.Env, toolEnv(c.Tool, dir, opts.Target, opts.Root)...)
 	cmd.Env = append(cmd.Env, defaultConfigEnv(c.Tool, env)...)
 	if opts.Target != "" {
 		cmd.Dir = opts.Target
@@ -275,10 +280,19 @@ const builtinBetterleaksConfig = "[extend]\nuseDefault = true\n"
 // semgrep loses its file list. Exactly the scanned directory is trusted,
 // for this process only (command-scope configuration), never every
 // directory.
-func toolEnv(tool, dir, target string) []string {
+func toolEnv(tool, dir, target, root string) []string {
 	env := []string{"TMPDIR=" + dir}
-	if target != "" {
-		env = append(env, "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=safe.directory", "GIT_CONFIG_VALUE_0="+target)
+	trusted := []string{}
+	for _, d := range []string{target, root} {
+		if d != "" && !slices.Contains(trusted, d) {
+			trusted = append(trusted, d)
+		}
+	}
+	if len(trusted) > 0 {
+		env = append(env, fmt.Sprintf("GIT_CONFIG_COUNT=%d", len(trusted)))
+		for i, d := range trusted {
+			env = append(env, fmt.Sprintf("GIT_CONFIG_KEY_%d=safe.directory", i), fmt.Sprintf("GIT_CONFIG_VALUE_%d=%s", i, d))
+		}
 	}
 	switch tool {
 	case "semgrep":
