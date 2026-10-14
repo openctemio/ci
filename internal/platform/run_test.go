@@ -280,6 +280,13 @@ func TestSanitize(t *testing.T) {
 	if got := Sanitize("a\nb\x1b[31m::warning::c\u0085"); strings.ContainsAny(got, "\n\x1b\u0085") || strings.Contains(got, "::") {
 		t.Fatalf("%q", got)
 	}
+	// Azure Pipelines reads "##vso[...]" and "##[...]" anywhere in a line; a
+	// file path or a title from the repository must not set a variable.
+	for _, in := range []string{"src/##vso[task.setvariable variable=PWNED]1/x.py", "##[warning]forged", "a ##vso[task.complete result=Succeeded]"} {
+		if got := Sanitize(in); strings.Contains(got, "##") {
+			t.Fatalf("%q -> %q", in, got)
+		}
+	}
 }
 
 // The repository file's gate settings travel with the verdict request.

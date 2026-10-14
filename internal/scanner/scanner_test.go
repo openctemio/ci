@@ -223,3 +223,19 @@ func hasFlagValue(argv []string, flag, value string) bool {
 	}
 	return false
 }
+
+// A target inside the repository: git works on the repository root (the
+// file list, the baseline commit), so the root is trusted too; no other
+// directory is.
+func TestToolEnvTrustsTargetAndRoot(t *testing.T) {
+	env := strings.Join(toolEnv("semgrep", "/tmp/o", "/src/svc", "/src"), "\n")
+	for _, want := range []string{"GIT_CONFIG_COUNT=2", "GIT_CONFIG_VALUE_0=/src/svc", "GIT_CONFIG_VALUE_1=/src"} {
+		if !strings.Contains(env, want) {
+			t.Errorf("missing %s in\n%s", want, env)
+		}
+	}
+	env = strings.Join(toolEnv("semgrep", "/tmp/o", "/src", "/src"), "\n")
+	if !strings.Contains(env, "GIT_CONFIG_COUNT=1") || strings.Contains(env, "GIT_CONFIG_KEY_1") {
+		t.Errorf("the root listed twice:\n%s", env)
+	}
+}

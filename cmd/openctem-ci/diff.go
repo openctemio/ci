@@ -24,9 +24,19 @@ func runGit(ctx context.Context, dir string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...) //nolint:gosec // fixed git subcommands; branch names are checked
-	cmd.Env = []string{"GIT_TERMINAL_PROMPT=0", "HOME=/nonexistent", "PATH=/usr/bin:/bin:/usr/local/bin"}
+	cmd.Env = gitEnv(dir)
 	out, err := cmd.Output()
 	return strings.TrimSpace(string(out)), err
+}
+
+// gitEnv is the environment of the diff git calls. The checkout usually
+// belongs to another user than this process (a container, a GitLab docker
+// executor that clones as root): git then refuses it as a dubious-ownership
+// repository and every call fails, which silently turned diff-aware scans
+// into full scans. Exactly this directory is trusted, for this command only.
+func gitEnv(dir string) []string {
+	return []string{"GIT_TERMINAL_PROMPT=0", "HOME=/nonexistent", "PATH=/usr/bin:/bin:/usr/local/bin",
+		"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=safe.directory", "GIT_CONFIG_VALUE_0=" + dir}
 }
 
 // safeBranch reports whether a branch name can be passed to git as a ref.

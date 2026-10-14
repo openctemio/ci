@@ -609,8 +609,11 @@ func WriteVerdict(w io.Writer, v *Verdict) {
 	}
 }
 
-// Sanitize replaces control characters, and the "::" that starts a GitHub
-// workflow command, so platform or scanner text cannot forge log lines.
+// Sanitize replaces control characters, the "::" that starts a GitHub
+// workflow command and the "##" that starts an Azure Pipelines logging
+// command ("##vso[...]", "##[...]", read anywhere in a line), so platform,
+// scanner or repository text (file paths, titles) cannot forge log lines or
+// set pipeline variables.
 func Sanitize(s string) string {
 	s = strings.Map(func(r rune) rune {
 		if r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0) {
@@ -618,7 +621,8 @@ func Sanitize(s string) string {
 		}
 		return r
 	}, s)
-	return strings.ReplaceAll(s, "::", ": :")
+	s = strings.ReplaceAll(s, "::", ": :")
+	return strings.ReplaceAll(s, "##", "# #")
 }
 
 func nonEmpty(s, fallback string) string {
