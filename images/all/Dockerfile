@@ -24,7 +24,7 @@ RUN cp "$(command -v trivy)" /trivy && /trivy --version
 FROM ghcr.io/betterleaks/betterleaks:v1.9.0@sha256:e3b95b0db6c2735db17165c009b0ad6d9cef34fb4578659232b98f69d7346cac AS betterleaks
 RUN cp "$(command -v betterleaks)" /betterleaks && /betterleaks version
 
-FROM docker.io/library/python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170
+FROM docker.io/library/python:3.12-slim@sha256:05cda9777409a9c3ffddd94a4c476b79f0769a0b4857f0c7ed9226b6800b0d6f
 LABEL org.opencontainers.image.title="openctem-ci" \
       org.opencontainers.image.description="OpenCTEM CI scanning: semgrep, trivy, betterleaks and openctem-ci" \
       org.opencontainers.image.source="https://github.com/openctemio/ci" \

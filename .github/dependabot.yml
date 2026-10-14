@@ -26,6 +26,10 @@ updates:
       # betterleaks v2 changes the JSON report the importer reads.
       - dependency-name: "betterleaks/betterleaks"
         update-types: ["version-update:semver-major"]
+      # semgrep's requirements.txt is hash-locked for one Python minor: a new
+      # Python minor needs a re-lock, so it moves by hand with requirements.in.
+      - dependency-name: "library/python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   # semgrep only (requirements.in): Dependabot re-locks requirements.txt with
   # pip-compile, so the dependency set moves with semgrep as one tested set.
