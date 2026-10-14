@@ -180,9 +180,11 @@ func Command(c capability.Capability, opts Options, out string) ([]string, impor
 		}
 		// Rule ids as the rules write them (the finding identity holds the
 		// rule id). opengrep has no metrics and refuses --metrics; its
-		// version check is off unless asked for.
+		// version check is off unless asked for. --dataflow-traces: a taint
+		// finding carries the path from the source to the sink
+		// (dataflow_trace, the finding's data_flow); both engines take it.
 		argv := []string{c.Tool, "scan", "--json", "--output", out, "--config", cfg,
-			"--disable-version-check", "--no-rewrite-rule-ids", "--quiet"}
+			"--disable-version-check", "--no-rewrite-rule-ids", "--dataflow-traces", "--quiet"}
 		format := importer.FormatOpengrep
 		switch c.Tool {
 		case "opengrep":
