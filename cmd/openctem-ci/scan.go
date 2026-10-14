@@ -20,6 +20,7 @@ import (
 
 	"github.com/openctemio/ci/internal/capability"
 	"github.com/openctemio/ci/internal/ciinfo"
+	"github.com/openctemio/ci/internal/claims"
 	"github.com/openctemio/ci/internal/codehash"
 	"github.com/openctemio/ci/internal/gate"
 	"github.com/openctemio/ci/internal/gitlab"
@@ -300,6 +301,22 @@ func (s *scanJob) convert(ctx context.Context, res *scanner.Result, known []stri
 	// on its code (a line shift keeps its triage); the code itself stays here.
 	if s.c.Name == "sast" && s.info.Workspace != "" {
 		codehash.Fill(r, s.info.Workspace)
+		// Inline ignore comments and the ignore file are claims: marked and
+		// listed for OpenCTEM, which asks the security team (internal/claims).
+		if n := claims.MarkInline(r, s.info.Workspace); n > 0 {
+			s.logf("[%s] %d result(s) carry an inline ignore comment: reported anyway; OpenCTEM asks for a review", s.c.Name, n)
+		}
+		if pats := claims.IgnorePatterns(s.info.Workspace); len(pats) > 0 {
+			list := make([]any, 0, len(pats))
+			for _, p := range pats {
+				list = append(list, p)
+			}
+			if r.Metadata.Properties == nil {
+				r.Metadata.Properties = ctis.Properties{}
+			}
+			r.Metadata.Properties[claims.Property] = list
+			s.logf("[%s] %s is not applied: its %d pattern(s) go to OpenCTEM as requests", s.c.Name, claims.IgnoreFile, len(pats))
+		}
 	}
 
 	if r.Tool == nil {
