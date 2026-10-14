@@ -20,6 +20,7 @@ import (
 
 	"github.com/openctemio/ci/internal/capability"
 	"github.com/openctemio/ci/internal/ciinfo"
+	"github.com/openctemio/ci/internal/codehash"
 	"github.com/openctemio/ci/internal/gate"
 	"github.com/openctemio/ci/internal/gitlab"
 	"github.com/openctemio/ci/internal/platform"
@@ -182,17 +183,16 @@ func (s *scanJob) run(ctx context.Context) int {
 	if err := redact.Check(ctisJSON, known); err != nil {
 		return s.fail(ctx, err)
 	}
-	s.status.Tally = gate.TallyReport(report)
-	s.printSummary(report)
-
-	if err := s.writeOutputs(report, ctisJSON, known, start); err != nil {
-		return s.fail(ctx, err)
-	}
-
+	shown := report
 	if s.pr != nil {
 		up, err := s.pr.Upload(ctx, report)
 		if err != nil {
 			s.warnf("the results could not be uploaded to OpenCTEM: %v", err)
+			s.status.Tally = gate.TallyReport(report)
+			s.printSummary(report)
+			if err := s.writeOutputs(report, ctisJSON, known, start); err != nil {
+				return s.fail(ctx, err)
+			}
 			s.status.Error = "upload failed"
 			s.status.OK = true
 			s.saveStatus()
@@ -202,6 +202,19 @@ func (s *scanJob) run(ctx context.Context) int {
 		info := s.pr.Info()
 		s.logf("Uploaded to OpenCTEM run %s (%s @ %s): %d finding(s) new, %d updated",
 			info.RunID, platform.Sanitize(info.Repository), short(info.CommitSHA), up.FindingsCreated, up.FindingsUpdated)
+		var hidden map[string]int
+		shown, hidden = withoutKnown(report, up.Known)
+		if n := len(report.Findings) - len(shown.Findings); n > 0 {
+			s.logf("[%s] %d result(s) already decided on OpenCTEM are left out of this output (%s); the platform still records them",
+				s.c.Name, n, decisionCounts(hidden))
+		}
+	}
+	// The local tally, the summary, SARIF and the merge request report show
+	// what still needs a decision. The CTIS file keeps every result.
+	s.status.Tally = gate.TallyReport(shown)
+	s.printSummary(shown)
+	if err := s.writeOutputs(shown, ctisJSON, known, start); err != nil {
+		return s.fail(ctx, err)
 	}
 	s.status.OK = true
 	s.saveStatus()
@@ -283,6 +296,11 @@ func (s *scanJob) convert(ctx context.Context, res *scanner.Result, known []stri
 		s.warnf("%d file path(s) pointed outside the repository and were removed", st.PathsCleared)
 	}
 	redact.Report(r, known)
+	// SAST: the hash of the flagged lines, so the platform keys the finding
+	// on its code (a line shift keeps its triage); the code itself stays here.
+	if s.c.Name == "sast" && s.info.Workspace != "" {
+		codehash.Fill(r, s.info.Workspace)
+	}
 
 	if r.Tool == nil {
 		r.Tool = &ctis.Tool{Name: res.Tool}
@@ -382,6 +400,50 @@ func (s *scanJob) writeOutputs(report *ctis.Report, ctisJSON []byte, known []str
 // the result target) when the finding has no location: code hosts and
 // GitLab place every finding on a file. The path is normalized and kept
 // inside the repository by scope.Apply afterwards.
+// withoutKnown returns report without the results OpenCTEM says are already
+// decided, and how many of each decision it left out. Indexes outside the
+// report are ignored. The report itself is not changed.
+func withoutKnown(report *ctis.Report, known []platform.Known) (*ctis.Report, map[string]int) {
+	if len(known) == 0 || report == nil {
+		return report, nil
+	}
+	skip := make(map[int]string, len(known))
+	for _, k := range known {
+		if k.Index >= 0 && k.Index < len(report.Findings) {
+			skip[k.Index] = k.Decision
+		}
+	}
+	if len(skip) == 0 {
+		return report, nil
+	}
+	shown := *report
+	shown.Findings = make([]ctis.Finding, 0, len(report.Findings)-len(skip))
+	counts := map[string]int{}
+	for i, f := range report.Findings {
+		if d, ok := skip[i]; ok {
+			counts[d]++
+			continue
+		}
+		shown.Findings = append(shown.Findings, f)
+	}
+	return &shown, counts
+}
+
+// decisionCounts renders {"false_positive": 2, "accepted": 1} as
+// "2 false positive, 1 accepted", in a stable order.
+func decisionCounts(c map[string]int) string {
+	keys := make([]string, 0, len(c))
+	for k := range c {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%d %s", c[k], strings.ReplaceAll(platform.Sanitize(k), "_", " ")))
+	}
+	return strings.Join(parts, ", ")
+}
+
 func locateTrivyTargets(r *ctis.Report) {
 	for i := range r.Findings {
 		f := &r.Findings[i]
