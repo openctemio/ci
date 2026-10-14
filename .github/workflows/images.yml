@@ -69,7 +69,9 @@ jobs:
               tags="${version} ${major}"
               publish=true
             elif [ "$REF" = refs/heads/main ]; then
-              tags="edge sha-${short}"
+              # The first tag is immutable: the index is pushed and signed
+              # under it before the moving tag (edge) points at it.
+              tags="sha-${short} edge"
               publish=true
             fi
           fi
@@ -204,6 +206,10 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
+      # Signed before it is published: the index goes out under the first,
+      # immutable tag (vX.Y.Z or sha-<commit>) only, is signed, and only then
+      # do the moving tags (vX, edge) point at it. A pipeline that resolves a
+      # moving tag never gets a digest without a signature.
       - name: Multi-platform index
         id: index
         working-directory: /tmp/digests
@@ -211,10 +217,8 @@ jobs:
           TAGS: ${{ needs.prepare.outputs.tags }}
         run: |
           image="${REGISTRY}/${NAME}"
-          args=()
-          for t in $TAGS; do args+=(-t "${image}:${t}"); done
-          docker buildx imagetools create "${args[@]}" $(printf "${image}@sha256:%s " *)
           first="${TAGS%% *}"
+          docker buildx imagetools create -t "${image}:${first}" $(printf "${image}@sha256:%s " *)
           digest="$(docker buildx imagetools inspect "${image}:${first}" --format '{{json .Manifest}}' | jq -r .digest)"
           [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::no index digest"; exit 1; }
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
@@ -230,6 +234,20 @@ jobs:
           cosign verify "$image" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             --certificate-identity "https://github.com/${WORKFLOW_REF}" > /dev/null
+
+      - name: Moving tags (after signing)
+        env:
+          DIGEST: ${{ steps.index.outputs.digest }}
+          TAGS: ${{ needs.prepare.outputs.tags }}
+        run: |
+          image="${REGISTRY}/${NAME}"
+          rest="${TAGS#* }"
+          [ "$rest" = "$TAGS" ] && exit 0
+          for t in $rest; do
+            docker buildx imagetools create -t "${image}:${t}" "${image}@${DIGEST}"
+            got="$(docker buildx imagetools inspect "${image}:${t}" --format '{{json .Manifest}}' | jq -r .digest)"
+            [ "$got" = "$DIGEST" ] || { echo "::error::${t} points at ${got}, not the signed ${DIGEST}"; exit 1; }
+          done
 
       - name: Summary
         env:
