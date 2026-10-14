@@ -30,7 +30,7 @@ openctem-sast:
     # default depth is 20) often lacks it and falls back to a full scan.
     GIT_DEPTH: "0"
   image:
-    name: ghcr.io/openctemio/ci-semgrep:edge@sha256:31a05e2f2bf79cc4f59bb5e43eb784d903c6cd0594f35729e359b7e99cc5fd41
+    name: ghcr.io/openctemio/ci-semgrep:edge@sha256:7ba5ffc906f883efc4876d3ada158bfabb6d5dbf8c950ceb057775d9349ec268
     entrypoint: [""]
   id_tokens:
     OPENCTEM_ID_TOKEN:
@@ -63,7 +63,7 @@ openctem-sast:
 openctem-sca:
   stage: test
   image:
-    name: ghcr.io/openctemio/ci-trivy:edge@sha256:4e6ee634630bd9e0bd16504c83ba6163a37f019ba714b9b40c950abee9e98988
+    name: ghcr.io/openctemio/ci-trivy:edge@sha256:90ae79561e805353128a229cf22cbc4a5272df14c2ea943a06301cc98d71d2cb
     entrypoint: [""]
   id_tokens:
     OPENCTEM_ID_TOKEN:
@@ -103,7 +103,7 @@ openctem-sca:
 openctem-secrets:
   stage: test
   image:
-    name: ghcr.io/openctemio/ci-betterleaks:edge@sha256:a1e9e21c8128466ed960cbb83f097312a743cffe2747e30180eaa4e9e9a80d8f
+    name: ghcr.io/openctemio/ci-betterleaks:edge@sha256:16fd5a68eb79c9f6efc30c215bab4c16bdabc3581ae6a41844b5e695fe6c0308
     entrypoint: [""]
   id_tokens:
     OPENCTEM_ID_TOKEN:
@@ -136,7 +136,7 @@ openctem-secrets:
 openctem-iac:
   stage: test
   image:
-    name: ghcr.io/openctemio/ci-trivy:edge@sha256:4e6ee634630bd9e0bd16504c83ba6163a37f019ba714b9b40c950abee9e98988
+    name: ghcr.io/openctemio/ci-trivy:edge@sha256:90ae79561e805353128a229cf22cbc4a5272df14c2ea943a06301cc98d71d2cb
     entrypoint: [""]
   id_tokens:
     OPENCTEM_ID_TOKEN:
@@ -178,7 +178,7 @@ openctem-iac:
 openctem-gate:
   stage: .post
   image:
-    name: ghcr.io/openctemio/ci-betterleaks:edge@sha256:a1e9e21c8128466ed960cbb83f097312a743cffe2747e30180eaa4e9e9a80d8f
+    name: ghcr.io/openctemio/ci-betterleaks:edge@sha256:16fd5a68eb79c9f6efc30c215bab4c16bdabc3581ae6a41844b5e695fe6c0308
     entrypoint: [""]
   id_tokens:
     OPENCTEM_ID_TOKEN:
