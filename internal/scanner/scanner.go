@@ -73,7 +73,16 @@ type Result struct {
 	Duration time.Duration
 }
 
-// DefaultSASTRules is the registry pack used when no sast rules are set.
+// PackDir is where the ci-opengrep image installs the OpenCTEM rules pack
+// (github.com/openctemio/sast-rules, a signed release verified at build).
+// The rules "openctem" name it.
+var PackDir = "/opt/openctem/sast-rules/rules"
+
+// PackRules names the OpenCTEM rules pack as sast rules.
+const PackRules = "openctem"
+
+// DefaultSASTRules is the registry pack used when no sast rules are set and
+// the image has no rules pack (the ci-semgrep image).
 // The engine fetches it on the CI runner at scan time; the image does not
 // redistribute registry rules.
 const DefaultSASTRules = "p/default"
@@ -176,9 +185,9 @@ func Command(c capability.Capability, opts Options, out string) ([]string, impor
 	const target = "."
 	switch c.Name {
 	case "sast":
-		cfg := strings.TrimSpace(opts.SASTRules)
-		if cfg == "" {
-			cfg = DefaultSASTRules
+		cfg, err := sastRules(opts.SASTRules)
+		if err != nil {
+			return nil, "", err
 		}
 		if strings.HasPrefix(cfg, "-") {
 			return nil, "", fmt.Errorf("sast rules %q must not start with '-'", cfg)
@@ -244,6 +253,25 @@ func Command(c capability.Capability, opts Options, out string) ([]string, impor
 			"--exit-code", "0", "--quiet", img}, importer.FormatTrivy, nil
 	}
 	return nil, "", fmt.Errorf("no tool for capability %q", c.Name)
+}
+
+// sastRules resolves the rules a sast scan runs: the ones set, else the
+// image's rules pack, else the registry pack.
+func sastRules(set string) (string, error) {
+	cfg := strings.TrimSpace(set)
+	packed := false
+	if fi, err := os.Stat(PackDir); err == nil && fi.IsDir() {
+		packed = true
+	}
+	switch {
+	case cfg == PackRules && !packed:
+		return "", fmt.Errorf("sast rules %q: this image has no rules pack (use the ci-opengrep image)", cfg)
+	case cfg == PackRules, cfg == "" && packed:
+		return PackDir, nil
+	case cfg == "":
+		return DefaultSASTRules, nil
+	}
+	return cfg, nil
 }
 
 // imageRef is a container image reference: [registry[:port]/]path[:tag][@digest].

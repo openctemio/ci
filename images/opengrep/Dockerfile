@@ -2,6 +2,8 @@
 # ghcr.io/openctemio/ci-opengrep: opengrep + openctem-ci (capability sast).
 # Build from the repository root: docker build -f images/opengrep/Dockerfile .
 #
+# The default sast rules are the OpenCTEM rules pack, a signed release
+# verified at build (stage "rules").
 # opengrep is the release's musl binary, pinned by version and SHA-256 per
 # architecture; its keyless signature is verified with cosign against the
 # opengrep release workflow of exactly that version before it is
@@ -52,6 +54,30 @@ RUN case "${TARGETARCH}" in \
     XDG_CACHE_HOME=/opt/opengrep/cache HOME=/tmp /opengrep --version | grep -qx "${OPENGREP_VERSION}"; \
     chmod -R a+rX,go-w /opt/opengrep/cache
 
+# The OpenCTEM rules pack (github.com/openctemio/sast-rules): a release
+# bundle whose cosign keyless signature must verify for the pack's release
+# workflow at exactly this tag. It is the image's default sast rules.
+FROM docker.io/library/alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS rules
+ARG SAST_RULES_VERSION=0.1.0
+ARG SAST_RULES_SHA256=6bcd18f7d6f65fbbccc0d965a86010e10da7d8f9e217a39597fe52e3fef4df6d
+COPY --from=cosign /ko-app/cosign /usr/local/bin/cosign
+# hadolint ignore=DL3018
+RUN apk add --no-cache ca-certificates curl
+SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+RUN f="sast-rules-${SAST_RULES_VERSION}.tar.gz"; \
+    base="https://github.com/openctemio/sast-rules/releases/download/v${SAST_RULES_VERSION}"; \
+    cd /tmp; \
+    curl -fsSLo "$f" "$base/$f"; curl -fsSLo "$f.sigstore.json" "$base/$f.sigstore.json"; \
+    echo "${SAST_RULES_SHA256}  $f" | sha256sum -c -; \
+    cosign verify-blob --bundle "$f.sigstore.json" \
+        --certificate-identity "https://github.com/openctemio/sast-rules/.github/workflows/release.yml@refs/tags/v${SAST_RULES_VERSION}" \
+        --certificate-oidc-issuer https://token.actions.githubusercontent.com "$f"; \
+    mkdir -p /opt/openctem/sast-rules; \
+    tar -xzf "$f" -C /opt/openctem/sast-rules --strip-components=1 --no-same-owner; \
+    test -d /opt/openctem/sast-rules/rules; \
+    grep -qx "${SAST_RULES_VERSION}" /opt/openctem/sast-rules/VERSION; \
+    chmod -R a+rX,go-w /opt/openctem/sast-rules
+
 FROM docker.io/library/alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 LABEL org.opencontainers.image.title="openctem-ci-opengrep" \
       org.opencontainers.image.description="OpenCTEM CI scanning: opengrep (sast) and openctem-ci" \
@@ -63,6 +89,7 @@ RUN apk add --no-cache ca-certificates git \
     && addgroup -g 1001 openctem && adduser -D -u 1001 -G openctem -h /home/openctem openctem
 COPY --from=opengrep /opengrep /usr/local/bin/opengrep
 COPY --from=opengrep /opt/opengrep/cache /opt/opengrep/cache
+COPY --from=rules /opt/openctem/sast-rules /opt/openctem/sast-rules
 COPY --from=build /out/openctem-ci /usr/local/bin/openctem-ci
 ENV HOME=/home/openctem \
     XDG_CACHE_HOME=/opt/opengrep/cache

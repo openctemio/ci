@@ -57,7 +57,7 @@ func cmdScan(ctx context.Context, args []string, stdout, stderr io.Writer, e env
 	fs.StringVar(&f.capability, "capability", e.getenv("OPENCTEM_CAPABILITY"), "capability to run: "+capability.Names())
 	fs.StringVar(&f.target, "target", ".", "directory to scan, inside the workspace")
 	fs.StringVar(&f.image, "image", "", "image reference to scan (container capability)")
-	fs.StringVar(&f.sastRules, "sast-rules", e.getenv("OPENCTEM_SAST_RULES"), "sast rules: a registry pack (fetched on this runner) or a path in the repository (default "+scanner.DefaultSASTRules+")")
+	fs.StringVar(&f.sastRules, "sast-rules", e.getenv("OPENCTEM_SAST_RULES"), "sast rules: "+scanner.PackRules+" (the image's signed OpenCTEM rules pack, the default in ci-opengrep), a path in the repository, or a registry pack fetched on this runner (the default without a pack: "+scanner.DefaultSASTRules+")")
 	fs.StringVar(&f.semgrepConfig, "semgrep-config", e.getenv("OPENCTEM_SEMGREP_CONFIG"), "deprecated: use -sast-rules")
 	fs.StringVar(&f.sarifOut, "sarif", "", "write the findings as SARIF to this file")
 	fs.StringVar(&f.gitlabOut, "gitlab-report", "", "write the findings as a GitLab security report to this file")
