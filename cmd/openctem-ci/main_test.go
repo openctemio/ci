@@ -40,7 +40,8 @@ func (f *fakePlatform) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = json.Unmarshal(body, &m)
 		f.exchanges = append(f.exchanges, m)
 		_ = json.NewEncoder(w).Encode(map[string]any{"run_id": "run-1", "token": "octci_test", "aggregate": m["aggregate"] == true,
-			"expires_at": time.Now().Add(15 * time.Minute), "repository": "gitlab.com/acme/app", "commit_sha": "c0ffee"})
+			"expires_at": time.Now().Add(15 * time.Minute), "repository": "gitlab.com/acme/app", "commit_sha": "c0ffee",
+			"secret_key": "a2V5LWtleS1rZXkta2V5LWtleS1rZXkta2V5LWtleS0="})
 	case strings.HasSuffix(r.URL.Path, "/results"):
 		if r.Header.Get("Authorization") != "Bearer octci_test" {
 			w.WriteHeader(http.StatusUnauthorized)
