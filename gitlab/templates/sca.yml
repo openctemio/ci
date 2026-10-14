@@ -26,7 +26,7 @@ variables:
 openctem-sca:
   stage: test
   image:
-    name: ghcr.io/openctemio/ci-trivy:edge@sha256:4e6ee634630bd9e0bd16504c83ba6163a37f019ba714b9b40c950abee9e98988
+    name: ghcr.io/openctemio/ci-trivy:edge@sha256:90ae79561e805353128a229cf22cbc4a5272df14c2ea943a06301cc98d71d2cb
     entrypoint: [""]
   id_tokens:
     OPENCTEM_ID_TOKEN:
