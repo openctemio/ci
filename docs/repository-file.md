@@ -32,3 +32,14 @@ gate:
   typo never drops a setting silently) fails the job with exit code 2.
 
 The GitHub reusable workflow checks out only this file for its gate job.
+
+## Scanner ignore files are not read
+
+`openctem-ci` does not read scanner configuration or ignore files from the
+scanned tree (`trivy.yaml`, `.trivyignore`, `.trivyignore.yaml`,
+`.gitleaks.toml`, `.betterleaks.toml`, `.gitleaksignore`,
+`.betterleaksignore`): the tree is the change under review, and a pull
+request must not be able to hide its own findings. Use an exception in this
+file instead; it is reviewed in OpenCTEM. A pipeline that needs its own
+betterleaks rules sets `BETTERLEAKS_CONFIG` (a path) or
+`BETTERLEAKS_CONFIG_TOML` (the content) in the workflow.
