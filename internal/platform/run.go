@@ -14,13 +14,17 @@ package platform
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
+	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -84,7 +88,11 @@ const renewBefore = 2 * time.Minute
 
 // Response bounds.
 const (
-	maxErrBody   = 4 << 10
+	maxErrBody = 4 << 10
+	// defaultRetries repeats a request after a transient failure.
+	defaultRetries = 3
+	// gzipFrom: a request body at least this large is sent gzip-compressed.
+	gzipFrom     = 4 << 10
 	maxBody      = 8 << 20
 	maxTokenBody = 64 << 10
 )
@@ -104,17 +112,43 @@ type Config struct {
 	Aggregate bool
 	// UserAgent is sent with every request (openctem-ci/<version>).
 	UserAgent string
-	// HTTPClient makes every request (default: 30s timeout, no redirects).
+	// HTTPClient makes every request (default: no redirects; each request
+	// is bounded by RequestTimeout, an upload by UploadTimeout).
 	HTTPClient *http.Client
+	// RequestTimeout bounds the token exchange and the verdict request
+	// (default 30s); UploadTimeout bounds one results upload (default 5m).
+	RequestTimeout time.Duration
+	UploadTimeout  time.Duration
+	// Retries is how often a request is repeated after a transient failure
+	// (default 3; negative: never). See retryable for what is transient.
+	Retries int
 	// Getenv reads the environment.
 	Getenv func(string) string
 }
 
 // ConfigFromEnv fills a configuration from the environment.
 func ConfigFromEnv(getenv func(string) string) Config {
-	return Config{APIURL: getenv(EnvAPIURL), TenantID: getenv(EnvTenantID),
+	c := Config{APIURL: getenv(EnvAPIURL), TenantID: getenv(EnvTenantID),
 		Audience: getenv(EnvAudience), IDTokenVar: getenv(EnvIDTokenVar), Getenv: getenv}
+	// OPENCTEM_RETRIES: 0 to 10 repeats after a transient failure.
+	if n, err := strconv.Atoi(strings.TrimSpace(getenv(EnvRetries))); err == nil && n >= 0 && n <= 10 {
+		c.Retries = n
+		if n == 0 {
+			c.Retries = -1
+		}
+	}
+	// OPENCTEM_UPLOAD_TIMEOUT: a Go duration, 10s to 1h.
+	if d, err := time.ParseDuration(strings.TrimSpace(getenv(EnvUploadTimeout))); err == nil && d >= 10*time.Second && d <= time.Hour {
+		c.UploadTimeout = d
+	}
+	return c
 }
+
+// Tuning variables.
+const (
+	EnvRetries       = "OPENCTEM_RETRIES"
+	EnvUploadTimeout = "OPENCTEM_UPLOAD_TIMEOUT"
+)
 
 func (c *Config) normalize() {
 	c.APIURL = strings.TrimRight(strings.TrimSpace(c.APIURL), "/")
@@ -125,9 +159,20 @@ func (c *Config) normalize() {
 	if c.IDTokenVar == "" {
 		c.IDTokenVar = DefaultIDTokenVar
 	}
+	if c.RequestTimeout <= 0 {
+		c.RequestTimeout = 30 * time.Second
+	}
+	if c.UploadTimeout <= 0 {
+		c.UploadTimeout = 5 * time.Minute
+	}
+	switch {
+	case c.Retries == 0:
+		c.Retries = defaultRetries
+	case c.Retries < 0:
+		c.Retries = 0
+	}
 	if c.HTTPClient == nil {
 		c.HTTPClient = &http.Client{
-			Timeout: 30 * time.Second,
 			// A redirect could carry the bearer to another host: refuse it.
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		}
@@ -318,7 +363,7 @@ func (r *Run) bearer(ctx context.Context) (string, error) {
 		ExpiresAt time.Time `json:"expires_at"`
 		Aggregate bool      `json:"aggregate"`
 	}
-	if err := r.do(ctx, "", "/api/v1/ci/oidc/exchange", body, &out); err != nil {
+	if err := r.do(ctx, kindExchange, "", "/api/v1/ci/oidc/exchange", body, &out); err != nil {
 		var se *StatusError
 		if errors.As(err, &se) && se.Status == http.StatusUnauthorized {
 			return "", fmt.Errorf("%w: %s (check the CI trust configuration, the audience %q and that the token is used once)",
@@ -341,6 +386,8 @@ func (r *Run) bearer(ctx context.Context) (string, error) {
 
 // idToken asks the CI provider for the job's OIDC token.
 func (r *Run) idToken(ctx context.Context) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, r.cfg.RequestTimeout)
+	defer cancel()
 	switch r.provider {
 	case ProviderGitHub:
 		u, err := url.Parse(r.cfg.Getenv("ACTIONS_ID_TOKEN_REQUEST_URL"))
@@ -392,6 +439,8 @@ func (r *Run) idToken(ctx context.Context) (string, error) {
 // (mapped into the step as SYSTEM_ACCESSTOKEN), without a service
 // connection. Neither token is printed.
 func (r *Run) azureToken(ctx context.Context) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, r.cfg.RequestTimeout)
+	defer cancel()
 	u, err := url.Parse(r.cfg.Getenv("SYSTEM_OIDCREQUESTURI"))
 	if err != nil || u.Host == "" || u.Scheme != "https" {
 		return "", errors.New("SYSTEM_OIDCREQUESTURI is not an https URL")
@@ -438,19 +487,122 @@ func (e *StatusError) Error() string {
 	return fmt.Sprintf("status %d: %s", e.Status, e.Message)
 }
 
-// do sends a JSON request to the platform. The bearer is never part of an
-// error.
-func (r *Run) do(ctx context.Context, bearer, path string, body, out any) error {
+// requestKind says how a request may be repeated after a transient
+// failure (retryable).
+type requestKind int
+
+const (
+	// kindExchange: the job's OIDC token is single use and the platform may
+	// have spent it on a request whose answer was lost, so the exchange is
+	// repeated only when nothing reached the platform's token check (no
+	// connection, or 429/503 from the rate limiter or a proxy).
+	kindExchange requestKind = iota
+	// kindUpload: repeating a report is harmless (findings are keyed by
+	// fingerprint).
+	kindUpload
+	// kindEvaluate: the first verdict is final, so asking again returns it.
+	kindEvaluate
+)
+
+// retryable reports whether a failed request may be repeated: a network
+// error or 429 or 5xx, never another 4xx (the request itself is wrong, or
+// was refused).
+func retryable(kind requestKind, status int, err error) bool {
+	if err != nil {
+		if kind == kindExchange {
+			var op *net.OpError
+			return errors.As(err, &op) && op.Op == "dial"
+		}
+		return !errors.Is(err, context.Canceled)
+	}
+	switch {
+	case status == http.StatusTooManyRequests, status == http.StatusServiceUnavailable:
+		return true
+	case kind == kindExchange:
+		return false
+	}
+	return status >= 500
+}
+
+// backoff is the wait before attempt n (1-based): 1s, 2s, 4s ... capped at
+// 30s with ±25% jitter; a Retry-After of up to 2 minutes wins.
+func backoff(n int, retryAfter string) time.Duration {
+	if s, err := strconv.Atoi(strings.TrimSpace(retryAfter)); err == nil && s >= 0 && s <= 120 {
+		return time.Duration(s) * time.Second
+	}
+	d := time.Second << min(n-1, 5)
+	d = min(d, 30*time.Second)
+	return d - d/4 + time.Duration(rand.Int64N(int64(d/2)+1)) // #nosec G404 -- jitter, not a secret
+}
+
+// sleep waits d or until ctx ends (replaced in tests).
+var sleep = func(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
+// do sends a JSON request to the platform, repeating it after a transient
+// failure (retryable). The bearer is never part of an error. A large body
+// goes gzip-compressed.
+func (r *Run) do(ctx context.Context, kind requestKind, bearer, path string, body, out any) error {
 	b, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.cfg.APIURL+path, bytes.NewReader(b))
+	encoding := ""
+	if len(b) >= gzipFrom {
+		var z bytes.Buffer
+		zw := gzip.NewWriter(&z)
+		if _, err := zw.Write(b); err != nil {
+			return err
+		}
+		if err := zw.Close(); err != nil {
+			return err
+		}
+		b, encoding = z.Bytes(), "gzip"
+	}
+	timeout := r.cfg.RequestTimeout
+	if kind == kindUpload {
+		timeout = r.cfg.UploadTimeout
+	}
+	for attempt := 1; ; attempt++ {
+		status, retryAfter, err := r.once(ctx, timeout, bearer, path, b, encoding, out)
+		if err == nil || attempt > r.cfg.Retries || !retryable(kind, status, transportErr(status, err)) {
+			return err
+		}
+		if serr := sleep(ctx, backoff(attempt, retryAfter)); serr != nil {
+			return err
+		}
+	}
+}
+
+// transportErr is err when the request got no HTTP answer, nil otherwise.
+func transportErr(status int, err error) error {
+	if status != 0 {
+		return nil
+	}
+	return err
+}
+
+// once sends one request; status is 0 when no HTTP answer came back.
+func (r *Run) once(ctx context.Context, timeout time.Duration, bearer, path string, body []byte, encoding string, out any) (int, string, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.cfg.APIURL+path, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return 0, "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	if encoding != "" {
+		req.Header.Set("Content-Encoding", encoding)
+	}
 	if r.cfg.UserAgent != "" {
 		req.Header.Set("User-Agent", r.cfg.UserAgent)
 	}
@@ -459,7 +611,7 @@ func (r *Run) do(ctx context.Context, bearer, path string, body, out any) error 
 	}
 	resp, err := r.cfg.HTTPClient.Do(req)
 	if err != nil {
-		return scrubURL(err)
+		return 0, "", scrubURL(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
@@ -473,17 +625,17 @@ func (r *Run) do(ctx context.Context, bearer, path string, body, out any) error 
 		if e.Code != "" && msg != "" {
 			msg = e.Code + ": " + msg
 		}
-		return &StatusError{Status: resp.StatusCode, Message: Sanitize(msg)}
+		return resp.StatusCode, resp.Header.Get("Retry-After"), &StatusError{Status: resp.StatusCode, Message: Sanitize(msg)}
 	}
 	if out == nil {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxErrBody))
-		return nil
+		return resp.StatusCode, "", nil
 	}
-	return json.NewDecoder(io.LimitReader(resp.Body, maxBody)).Decode(out)
+	return resp.StatusCode, "", json.NewDecoder(io.LimitReader(resp.Body, maxBody)).Decode(out)
 }
 
 // call runs an authenticated request on the run.
-func (r *Run) call(ctx context.Context, action string, body, out any) error {
+func (r *Run) call(ctx context.Context, kind requestKind, action string, body, out any) error {
 	tok, err := r.bearer(ctx)
 	if err != nil {
 		return err
@@ -491,7 +643,7 @@ func (r *Run) call(ctx context.Context, action string, body, out any) error {
 	r.mu.Lock()
 	path := "/api/v1/ci/runs/" + url.PathEscape(r.runID) + "/" + action
 	r.mu.Unlock()
-	return r.do(ctx, tok, path, body, out)
+	return r.do(ctx, kind, tok, path, body, out)
 }
 
 // UploadResult counts what the platform stored from a report.
@@ -508,7 +660,7 @@ func (r *Run) Upload(ctx context.Context, report *ctis.Report) (*UploadResult, e
 		return &UploadResult{}, nil
 	}
 	var out UploadResult
-	if err := r.call(ctx, "results", map[string]any{"report": report}, &out); err != nil {
+	if err := r.call(ctx, kindUpload, "results", map[string]any{"report": report}, &out); err != nil {
 		return nil, fmt.Errorf("upload results: %w", err)
 	}
 	return &out, nil
@@ -564,7 +716,7 @@ func (r *Run) Evaluate(ctx context.Context, scanFailures int) (*Verdict, error) 
 	if len(r.repoPolicy) > 0 {
 		body["repo_policy"] = r.repoPolicy
 	}
-	if err := r.call(ctx, "evaluate", body, &v); err != nil {
+	if err := r.call(ctx, kindEvaluate, "evaluate", body, &v); err != nil {
 		return nil, fmt.Errorf("evaluate: %w", err)
 	}
 	return &v, nil
