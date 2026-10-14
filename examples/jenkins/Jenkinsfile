@@ -14,7 +14,7 @@
 // Needs an agent with Docker. Images are pinned by digest
 // (scripts/pin-images.sh rewrites them on a release).
 
-def ciImage = 'ghcr.io/openctemio/ci:edge@sha256:55dc570faf3bca0852199b2a870ba04afe0e0f8efae1c68ac76a764aa09a0668'
+def ciImage = 'ghcr.io/openctemio/ci:edge@sha256:d8a54b546d0fd1eeca54f3336a44cf487af4375646f6822075f8b237a183cd2d'
 
 def openctem(String image, String args) {
     // The job's token is bound for this call only (a fresh one each time)
