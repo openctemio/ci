@@ -239,3 +239,36 @@ func TestToolEnvTrustsTargetAndRoot(t *testing.T) {
 		t.Errorf("the root listed twice:\n%s", env)
 	}
 }
+
+// On a pull request the secret scan covers only the change's commits (git
+// mode over merge-base..HEAD), with the same hardening as a full scan;
+// without a valid merge base it scans the whole tree.
+func TestSecretsDiffAware(t *testing.T) {
+	secrets := capOf(t, "secrets")
+	base := strings.Repeat("c", 40)
+	argv, _, err := Command(secrets, Options{BaselineCommit: base}, "/tmp/x/report.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if argv[1] != "git" || !slicesContains(argv, "--log-opts="+base+"..HEAD") {
+		t.Fatalf("diff-aware argv = %v", argv)
+	}
+	if !hasFlagValue(argv, "--gitleaks-ignore-path", "/tmp/x") || !slicesContains(argv, "--ignore-gitleaks-allow") || slicesContains(argv, "--verbose") {
+		t.Fatalf("hardening lost in git mode: %v", argv)
+	}
+	for _, bad := range []string{"", "HEAD~1", "--all", strings.Repeat("g", 40), base + " --all"} {
+		argv, _, _ = Command(secrets, Options{BaselineCommit: bad}, "/tmp/x/report.json")
+		if argv[1] != "dir" || strings.Contains(strings.Join(argv, " "), "--log-opts") {
+			t.Fatalf("baseline %q: %v", bad, argv)
+		}
+	}
+}
+
+func slicesContains(s []string, v string) bool {
+	for _, x := range s {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}

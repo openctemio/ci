@@ -50,7 +50,7 @@ the capabilities, their tools and images) and `version`.
 | `--no-push` | `false` | scan and write files only; do not upload |
 | `--aggregate` | `false` | report into the run shared by all capability jobs of this pipeline; a final `gate` job decides |
 | `--timeout` | `30m` | tool timeout |
-| `--diff` | `$OPENCTEM_DIFF`, else `auto` | `sast` on a pull or merge request: `auto` reports only findings new since the merge base with the target branch (needs the history: `fetch-depth: 0`); `off` scans in full |
+| `--diff` | `$OPENCTEM_DIFF`, else `auto` | on a pull or merge request, `auto`: `sast` reports only findings new since the merge base with the target branch, `secrets` scans only the commits after it (every commit of the change, so a secret added and removed again is still found); both need the history (`fetch-depth: 0`) and fall back to a full scan, saying why, without it. `off` scans in full. Default-branch runs always scan in full |
 
 `gate` flags: `--status-dir` (default `.`), `--expect` (capabilities that
 must have reported, default `$OPENCTEM_CAPABILITIES`), `--fail-on`, and

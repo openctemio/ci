@@ -12,8 +12,10 @@ CI job ── checkout ──▶ openctem-ci scan --capability sast
                          │ 1. read the CI environment (repository, branch, commit, PR/MR, fork)
                          │ 2. resolve the target inside the workspace (symlinks followed)
                          │ 3. run the tool (fixed argv, filtered env, private temp dir, timeout);
-                         │    sast on a pull/merge request is diff-aware (semgrep --baseline-commit
-                         │    at the merge base) when the history is there, else a full scan
+                         │    on a pull/merge request sast is diff-aware (semgrep --baseline-commit
+                         │    at the merge base) and secrets scans only the change's commits
+                         │    (betterleaks git --log-opts=<base>..HEAD) when the history is there,
+                         │    else a full scan
                          │ 4. convert its native output to CTIS (ctis/importer)
                          │ 5. scope: one repository asset, repository-relative paths
                          │ 6. redact: mask secrets everywhere, then check every output

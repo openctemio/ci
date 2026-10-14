@@ -62,7 +62,7 @@ func cmdScan(ctx context.Context, args []string, stdout, stderr io.Writer, e env
 	fs.BoolVar(&f.noPush, "no-push", false, "do not upload to OpenCTEM (scan and write files only)")
 	fs.BoolVar(&f.aggregate, "aggregate", false, "report into the run shared by all capability jobs of this pipeline; a final 'gate' job decides")
 	fs.DurationVar(&f.timeout, "timeout", 30*time.Minute, "tool timeout")
-	fs.StringVar(&f.diff, "diff", nonEmptyEnv(e.getenv("OPENCTEM_DIFF"), "auto"), "sast on a pull or merge request: auto (only findings new since the merge base) or off (full scan)")
+	fs.StringVar(&f.diff, "diff", nonEmptyEnv(e.getenv("OPENCTEM_DIFF"), "auto"), "on a pull or merge request: auto (sast: only findings new since the merge base; secrets: only the change's commits) or off (full scan)")
 	if err := fs.Parse(args); err != nil {
 		return gate.ExitError
 	}
@@ -143,7 +143,10 @@ func (s *scanJob) run(ctx context.Context) int {
 	}
 
 	baseline := ""
-	if s.c.Name == "sast" {
+	// sast reports what the change adds compared with the merge base;
+	// secrets scans only the change's commits (repository root only: the
+	// commit range covers the whole repository, not a subdirectory).
+	if s.c.Name == "sast" || (s.c.Name == "secrets" && targetRel == ".") {
 		var note string
 		baseline, note = baselineCommit(ctx, s.f.diff, s.info, s.e.getenv, s.git())
 		s.logf("[%s] %s", s.c.Tool, note)
