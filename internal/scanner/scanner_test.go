@@ -341,3 +341,27 @@ func TestSASTIgnoresRepositoryClaims(t *testing.T) {
 		}
 	}
 }
+
+// The image's rules pack is the default when the image has one; "openctem"
+// names it, and is refused in an image without it.
+func TestSASTRulesPack(t *testing.T) {
+	old := PackDir
+	t.Cleanup(func() { PackDir = old })
+	PackDir = filepath.Join(t.TempDir(), "absent")
+	if got, err := sastRules(""); err != nil || got != DefaultSASTRules {
+		t.Fatalf("no pack: %q %v", got, err)
+	}
+	if _, err := sastRules(PackRules); err == nil {
+		t.Fatal("openctem accepted without a pack")
+	}
+	PackDir = t.TempDir()
+	for in, want := range map[string]string{"": PackDir, PackRules: PackDir, "rules/": "rules/", "p/default": "p/default"} {
+		if got, err := sastRules(in); err != nil || got != want {
+			t.Errorf("%q: %q %v, want %q", in, got, err, want)
+		}
+	}
+	argv, _, err := Command(capOf(t, "sast"), Options{}, "o")
+	if err != nil || !strings.Contains(strings.Join(argv, " "), "--config "+PackDir) {
+		t.Fatalf("argv %v %v", argv, err)
+	}
+}
