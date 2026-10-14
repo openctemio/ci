@@ -81,6 +81,9 @@ inputs:
   verify-signature:
     description: 'Verify the image signature (cosign keyless) and run it by digest'
     default: 'true'
+  ca-bundle:
+    description: 'Self-hosted runners with a private CA: a PEM file in the workspace with every CA the scan must trust (the public roots and your own); mounted read-only for the scanners and the upload'
+    default: ''
 
 outputs:
   exit-code:
@@ -127,6 +130,7 @@ runs:
         INPUT_IMAGE_TAG: ${{ inputs.image-tag }}
         INPUT_SCANNER_IMAGE: ${{ inputs.scanner-image }}
         INPUT_VERIFY_SIGNATURE: ${{ inputs.verify-signature }}
+        INPUT_CA_BUNDLE: ${{ inputs.ca-bundle }}
         ACTION_REF: ${{ github.action_ref }}
         OPENCTEM_API_URL: ${{ inputs.api-url }}
         OPENCTEM_TENANT_ID: ${{ inputs.tenant-id }}
