@@ -46,7 +46,7 @@ inputs:
     description: 'Image reference to scan (container capability)'
     default: ''
   sast-rules:
-    description: 'sast rules (opengrep): a path in the repository, or a registry pack (default p/default) the engine fetches on the runner'
+    description: 'sast rules (opengrep): openctem (the signed OpenCTEM rules pack in the image, the default), a path in the repository, or a registry pack the engine fetches on the runner'
     default: ''
   semgrep-config:
     description: 'Deprecated: use sast-rules'
