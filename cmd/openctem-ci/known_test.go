@@ -123,3 +123,20 @@ func TestWithoutKnownIgnoresBadIndexes(t *testing.T) {
 		t.Fatal("an out-of-range index hid a result")
 	}
 }
+
+// A secret goes up as the keyed hash of its raw value under the key the
+// exchange handed the run; the raw value never does.
+func TestScanSendsSecretsAsKeyedHashes(t *testing.T) {
+	h := setup(t)
+	h.p.verdict = "pass"
+	if code, stdout, stderr := h.run("scan", "--capability", "secrets"); code != 0 {
+		t.Fatalf("exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	if len(h.p.uploads) != 1 {
+		t.Fatalf("uploads: %d", len(h.p.uploads))
+	}
+	up := string(h.p.uploads[0])
+	if !strings.Contains(up, `"secretHMAC/v1"`) || strings.Contains(up, rawSecret) {
+		t.Fatalf("upload: hash present %v, raw secret present %v", strings.Contains(up, `"secretHMAC/v1"`), strings.Contains(up, rawSecret))
+	}
+}

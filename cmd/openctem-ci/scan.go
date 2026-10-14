@@ -30,6 +30,7 @@ import (
 	"github.com/openctemio/ci/internal/sarif"
 	"github.com/openctemio/ci/internal/scanner"
 	"github.com/openctemio/ci/internal/scope"
+	"github.com/openctemio/ci/internal/secrethash"
 )
 
 type scanFlags struct {
@@ -173,6 +174,13 @@ func (s *scanJob) run(ctx context.Context) int {
 
 	known := redact.RawSecrets(res.Format, res.Output)
 	report, err := s.convert(ctx, res, known, targetAbs, targetRel)
+	if err == nil && s.pr != nil {
+		// Each secret goes up as a keyed hash of its raw value (the key comes
+		// with the run); the value itself never does.
+		if n := secrethash.Apply(report, res.Format, res.Output, s.pr.SecretKey(ctx)); n > 0 {
+			s.logf("[%s] %d secret(s) identified by a keyed hash; no secret value is sent", s.c.Name, n)
+		}
+	}
 	res.Output = nil // the raw output may hold secrets: drop it now
 	if err != nil {
 		return s.fail(ctx, err)

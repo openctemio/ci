@@ -16,6 +16,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -256,11 +257,25 @@ type Run struct {
 	usedToken bool
 	// repoPolicy is the gate part of the repository's .openctem.yml.
 	repoPolicy json.RawMessage
+	// secretKey hashes the raw secrets the job finds (from the exchange).
+	secretKey []byte
 }
 
 // SetRepoPolicy sends the repository file's gate settings with the verdict
 // request (the platform applies only what is stricter).
 func (r *Run) SetRepoPolicy(raw json.RawMessage) { r.repoPolicy = raw }
+
+// SecretKey is the key the platform hands the job to hash the raw secrets
+// it finds (the run is opened if it is not yet); nil when the platform gives
+// none, and the secrets then go up masked only.
+func (r *Run) SecretKey(ctx context.Context) []byte {
+	if _, err := r.bearer(ctx); err != nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]byte(nil), r.secretKey...)
+}
 
 // Info is what the platform says about the run.
 type Info struct {
@@ -362,6 +377,7 @@ func (r *Run) bearer(ctx context.Context) (string, error) {
 		Token     string    `json:"token"`
 		ExpiresAt time.Time `json:"expires_at"`
 		Aggregate bool      `json:"aggregate"`
+		SecretKey string    `json:"secret_key"`
 	}
 	if err := r.do(ctx, kindExchange, "", "/api/v1/ci/oidc/exchange", body, &out); err != nil {
 		var se *StatusError
@@ -381,6 +397,9 @@ func (r *Run) bearer(ctx context.Context) (string, error) {
 		return "", ErrNoAggregate
 	}
 	r.token, r.expiresAt, r.runID, r.info = out.Token, out.ExpiresAt, out.RunID, out.Info
+	if k, err := base64.StdEncoding.DecodeString(out.SecretKey); err == nil && len(k) >= 32 {
+		r.secretKey = k
+	}
 	return r.token, nil
 }
 
