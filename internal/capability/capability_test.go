@@ -71,10 +71,10 @@ func TestCatalogIsComplete(t *testing.T) {
 			t.Errorf("%s: image %q is not a ci-<tool> image", c.Name, c.Image)
 		}
 	}
-	if got := Tools(); strings.Join(got, ",") != "betterleaks,semgrep,trivy" {
+	if got := Tools(); strings.Join(got, ",") != "betterleaks,opengrep,trivy" {
 		t.Errorf("Tools() = %v", got)
 	}
-	if c, _ := Lookup("sast"); c.ImageRef("v1") != "ghcr.io/openctemio/ci-semgrep:v1" {
+	if c, _ := Lookup("sast"); c.ImageRef("v1") != "ghcr.io/openctemio/ci-opengrep:v1" {
 		t.Errorf("ImageRef = %s", c.ImageRef("v1"))
 	}
 }

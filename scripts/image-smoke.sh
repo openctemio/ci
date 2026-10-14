@@ -5,7 +5,7 @@
 # SARIF and a GitLab report. A tool that is shipped broken fails the build
 # here instead of failing users' pipelines.
 #
-#   scripts/image-smoke.sh <semgrep|trivy|betterleaks|all> <image>
+#   scripts/image-smoke.sh <opengrep|semgrep|trivy|betterleaks|all> <image>
 set -euo pipefail
 
 variant="${1:?usage: image-smoke.sh <variant> <image>}"
@@ -14,6 +14,7 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 fixture="${root}/testdata/fixture"
 
 case "$variant" in
+  opengrep) tools="opengrep"; caps="sast" ;;
   semgrep) tools="semgrep"; caps="sast" ;;
   trivy) tools="trivy"; caps="sca iac" ;;
   betterleaks) tools="betterleaks"; caps="secrets" ;;

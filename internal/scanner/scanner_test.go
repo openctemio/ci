@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openctemio/ctis/importer"
+
 	"github.com/openctemio/ci/internal/capability"
 )
 
@@ -37,12 +39,24 @@ func TestCommand(t *testing.T) {
 			t.Errorf("%s: the report does not go to the private file: %s", c.Name, joined)
 		}
 	}
-	argv, _, _ := Command(capOf(t, "sast"), Options{}, "o")
-	if !strings.Contains(strings.Join(argv, " "), "--metrics=off") || !strings.Contains(strings.Join(argv, " "), DefaultSemgrepConfig) {
-		t.Errorf("semgrep: %v", argv)
+	// opengrep (the default engine) refuses --metrics; semgrep gets it.
+	argv, format, _ := Command(capOf(t, "sast"), Options{}, "o")
+	if j := strings.Join(argv, " "); argv[0] != "opengrep" || strings.Contains(j, "--metrics") || !strings.Contains(j, DefaultSASTRules) ||
+		!strings.Contains(j, "--no-rewrite-rule-ids") || format != importer.FormatOpengrep {
+		t.Errorf("opengrep: %v %s", argv, format)
 	}
-	if _, _, err := Command(capOf(t, "sast"), Options{SemgrepConfig: "--dangerous"}, "o"); err == nil {
-		t.Error("a semgrep config that is an option was accepted")
+	sg := capOf(t, "sast")
+	sg.Tool = "semgrep"
+	argv, format, _ = Command(sg, Options{SASTRules: "rules/"}, "o")
+	if j := strings.Join(argv, " "); argv[0] != "semgrep" || !strings.Contains(j, "--metrics=off") || !strings.Contains(j, "--config rules/") || format != importer.FormatSemgrep {
+		t.Errorf("semgrep: %v %s", argv, format)
+	}
+	if _, _, err := Command(capOf(t, "sast"), Options{SASTRules: "--dangerous"}, "o"); err == nil {
+		t.Error("sast rules that are an option were accepted")
+	}
+	sg.Tool = "other"
+	if _, _, err := Command(sg, Options{}, "o"); err == nil {
+		t.Error("an unknown sast engine was accepted")
 	}
 }
 
@@ -271,4 +285,39 @@ func slicesContains(s []string, v string) bool {
 		}
 	}
 	return false
+}
+
+// The sast engine is the first of opengrep, semgrep the image has: the
+// ci-opengrep image runs opengrep, the ci-semgrep image keeps semgrep.
+func TestResolveSASTEngine(t *testing.T) {
+	bin := func(names ...string) string {
+		d := t.TempDir()
+		for _, n := range names {
+			if err := os.WriteFile(filepath.Join(d, n), []byte("#!/bin/sh\n"), 0o700); err != nil { //nolint:gosec // test script
+				t.Fatal(err)
+			}
+		}
+		return d
+	}
+	for _, c := range []struct {
+		have []string
+		want string
+	}{{[]string{"opengrep", "semgrep"}, "opengrep"}, {[]string{"semgrep"}, "semgrep"}, {nil, "opengrep"}} {
+		dir := bin(c.have...)
+		got := Resolve(capOf(t, "sast"), func() []string { return []string{"PATH=" + dir} })
+		if got.Tool != c.want {
+			t.Errorf("with %v: %s, want %s", c.have, got.Tool, c.want)
+		}
+	}
+	if got := Resolve(capOf(t, "sca"), nil); got.Tool != "trivy" {
+		t.Errorf("sca resolved to %s", got.Tool)
+	}
+}
+
+// opengrep's log goes to the private output directory.
+func TestToolEnvOpengrep(t *testing.T) {
+	env := strings.Join(toolEnv("opengrep", "/tmp/o", "/src", "/src"), "\n")
+	if !strings.Contains(env, "XDG_CONFIG_HOME=/tmp/o") || strings.Contains(env, "SEMGREP_") {
+		t.Errorf("env %s", env)
+	}
 }

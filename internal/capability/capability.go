@@ -49,7 +49,7 @@ const Registry = "ghcr.io/openctemio"
 const BundleImage = "ci"
 
 var catalog = []Capability{
-	{Name: "sast", ID: "sast.code@1", Tool: "semgrep", Image: "ci-semgrep",
+	{Name: "sast", ID: "sast.code@1", Tool: "opengrep", Image: "ci-opengrep",
 		GitLabReport: "sast", GitLabFile: "gl-sast-report.json", Target: TargetRepository},
 	{Name: "sca", ID: "sca.deps@1", Tool: "trivy", Image: "ci-trivy",
 		GitLabReport: "dependency_scanning", GitLabFile: "gl-dependency-scanning-report.json", Target: TargetRepository},

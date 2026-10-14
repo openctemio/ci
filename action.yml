@@ -45,8 +45,11 @@ inputs:
   image:
     description: 'Image reference to scan (container capability)'
     default: ''
+  sast-rules:
+    description: 'sast rules (opengrep): a path in the repository, or a registry pack (default p/default) the engine fetches on the runner'
+    default: ''
   semgrep-config:
-    description: 'semgrep rules: a registry pack (default p/default) or a path in the repository'
+    description: 'Deprecated: use sast-rules'
     default: ''
   fail-on:
     description: 'Local gate threshold (critical, high, medium, low, info), used when the platform gate cannot decide'
@@ -119,6 +122,7 @@ runs:
         INPUT_PATH: ${{ inputs.path }}
         INPUT_TARGET: ${{ inputs.target }}
         INPUT_IMAGE: ${{ inputs.image }}
+        INPUT_SAST_RULES: ${{ inputs.sast-rules }}
         INPUT_SEMGREP_CONFIG: ${{ inputs.semgrep-config }}
         INPUT_FAIL_ON: ${{ inputs.fail-on }}
         INPUT_DIFF: ${{ inputs.diff }}

@@ -94,7 +94,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [semgrep, trivy, betterleaks, all]
+        image: [opengrep, semgrep, trivy, betterleaks, all]
         arch: [amd64, arm64]
         include:
           - arch: amd64
@@ -187,7 +187,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [semgrep, trivy, betterleaks, all]
+        image: [opengrep, semgrep, trivy, betterleaks, all]
     env:
       NAME: ${{ matrix.image == 'all' && 'ci' || format('ci-{0}', matrix.image) }}
     steps:
