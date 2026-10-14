@@ -104,7 +104,7 @@ jobs:
       - id: p
         run: |
           edge=true
-          for i in ci-semgrep ci-trivy ci-betterleaks; do
+          for i in ci-opengrep ci-semgrep ci-trivy ci-betterleaks; do
             docker buildx imagetools inspect "ghcr.io/openctemio/$i:edge" > /dev/null 2>&1 || edge=false
           done
           echo "edge=$edge" >> "$GITHUB_OUTPUT"

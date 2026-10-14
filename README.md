@@ -15,7 +15,7 @@ Product documentation: <https://docs.openctem.io>.
 
 | Name | Does | Tool |
 |---|---|---|
-| `sast` | static analysis of the code | semgrep |
+| `sast` | static analysis of the code | opengrep (the `ci-semgrep` image runs semgrep) |
 | `sca` | vulnerable dependencies | trivy |
 | `secrets` | committed credentials | betterleaks |
 | `iac` | infrastructure-as-code misconfigurations | trivy |
@@ -43,7 +43,7 @@ the capabilities, their tools and images) and `version`.
 | `--capability` | `$OPENCTEM_CAPABILITY` | the one capability to run |
 | `--target` | `.` | directory to scan, inside the workspace |
 | `--image` | | image reference to scan (`container`) |
-| `--semgrep-config` | `$OPENCTEM_SEMGREP_CONFIG`, else `p/default` | semgrep rules: a registry pack or a path in the repository |
+| `--sast-rules` | `$OPENCTEM_SAST_RULES`, else `p/default` | sast rules: a path in the repository, or a registry pack the engine fetches on the runner (`--semgrep-config` / `$OPENCTEM_SEMGREP_CONFIG` still work, with a deprecation warning) |
 | `--sarif`, `--gitlab-report`, `--ctis` | | write SARIF, a GitLab security report or the CTIS report to this file |
 | `--status` | | write the job status for a later `gate` job to this file |
 | `--fail-on` | `$OPENCTEM_FAIL_ON` | local gate threshold (`critical`, `high`, `medium`, `low`, `info`), used when the platform gate cannot decide |
@@ -51,6 +51,8 @@ the capabilities, their tools and images) and `version`.
 | `--aggregate` | `false` | report into the run shared by all capability jobs of this pipeline; a final `gate` job decides |
 | `--timeout` | `30m` | tool timeout |
 | `--diff` | `$OPENCTEM_DIFF`, else `auto` | on a pull or merge request, `auto`: `sast` reports only findings new since the merge base with the target branch, `secrets` scans only the commits after it (every commit of the change, so a secret added and removed again is still found); both need the history (`fetch-depth: 0`) and fall back to a full scan, saying why, without it. `off` scans in full. Default-branch runs always scan in full |
+
+A registry pack (such as the default `p/default`) is fetched by the engine on your runner at scan time and is used under the registry's own rules licence; the images do not include registry rules. Point `--sast-rules` at a path in the repository to run your own rules without fetching anything.
 
 `gate` flags: `--status-dir` (default `.`), `--expect` (capabilities that
 must have reported, default `$OPENCTEM_CAPABILITIES`), `--fail-on`, and

@@ -26,7 +26,11 @@ image_override="${INPUT_SCANNER_IMAGE:-}"
 tag="${INPUT_IMAGE_TAG:-}"
 verify="${INPUT_VERIFY_SIGNATURE:-true}"
 container_image="${INPUT_IMAGE:-}"
-semgrep_config="${INPUT_SEMGREP_CONFIG:-}"
+sast_rules="${INPUT_SAST_RULES:-}"
+if [ -z "$sast_rules" ] && [ -n "${INPUT_SEMGREP_CONFIG:-}" ]; then
+  echo "::warning::semgrep-config is deprecated: use sast-rules"
+  sast_rules="$INPUT_SEMGREP_CONFIG"
+fi
 status_dir_in="${INPUT_STATUS_DIR:-}"
 ca_bundle_in="${INPUT_CA_BUNDLE:-}"
 
@@ -51,7 +55,7 @@ for p in "$path_in" "$target_in"; do
   [[ "$p" != /* && "$p" != *..* ]] || die "path and target are relative paths inside the workspace without '..'"
 done
 [ -z "$container_image" ] || [[ "$container_image" =~ ^[a-z0-9./:@_-]+$ ]] || die "image is not an image reference"
-[ -z "$semgrep_config" ] || [[ "$semgrep_config" =~ ^[A-Za-z0-9./_@:-]+$ && "$semgrep_config" != -* ]] || die "semgrep-config is not a rule pack or path"
+[ -z "$sast_rules" ] || [[ "$sast_rules" =~ ^[A-Za-z0-9./_@:-]+$ && "$sast_rules" != -* ]] || die "sast-rules is not a rule pack or path"
 [ -z "$tag" ] || [[ "$tag" =~ ^[A-Za-z0-9._-]{1,128}$ ]] || die "image-tag is not a tag"
 [ -z "$image_override" ] || [[ "$image_override" =~ ^[a-z0-9./:@_-]+$ ]] || die "scanner-image is not an image reference"
 
@@ -79,7 +83,7 @@ fi
 image_for() {
   if [ -n "$image_override" ]; then echo "$image_override"; return; fi
   case "$1" in
-    sast) echo "ghcr.io/openctemio/ci-semgrep:$tag" ;;
+    sast) echo "ghcr.io/openctemio/ci-opengrep:$tag" ;;
     secrets) echo "ghcr.io/openctemio/ci-betterleaks:$tag" ;;
     sca | iac | container) echo "ghcr.io/openctemio/ci-trivy:$tag" ;;
     gate) echo "ghcr.io/openctemio/ci-betterleaks:$tag" ;; # the smallest image
@@ -149,7 +153,7 @@ run_ci() {
     -e GITHUB_ACTIONS -e GITHUB_REPOSITORY -e GITHUB_SHA -e GITHUB_REF -e GITHUB_HEAD_REF -e GITHUB_BASE_REF \
     -e GITHUB_EVENT_NAME -e GITHUB_SERVER_URL -e GITHUB_EVENT_PATH=/github/event.json \
     -e GITHUB_WORKSPACE=/src -e GITHUB_STEP_SUMMARY=/github/summary \
-    -e OPENCTEM_FAIL_ON="$fail_on" -e OPENCTEM_DIFF="$diff_in" -e OPENCTEM_SEMGREP_CONFIG="$semgrep_config" \
+    -e OPENCTEM_FAIL_ON="$fail_on" -e OPENCTEM_DIFF="$diff_in" -e OPENCTEM_SAST_RULES="$sast_rules" \
     "${report_env[@]}" "${net_args[@]}" "${ca_args[@]}" \
     "$image" "$@"
 }

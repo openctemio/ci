@@ -27,7 +27,7 @@ mirrored to a GitLab project for the CI/CD Catalog.
 |---|---|
 | `OPENCTEM_API_URL`, `OPENCTEM_TENANT_ID` | report to OpenCTEM (OIDC; no stored key) |
 | `OPENCTEM_FAIL_ON` | local gate threshold when the platform gate cannot decide |
-| `OPENCTEM_SCAN_ARGS` | extra `openctem-ci scan` flags, e.g. `--target services/api` or `--semgrep-config p/golang` |
+| `OPENCTEM_SCAN_ARGS` | extra `openctem-ci scan` flags, e.g. `--target services/api` or `--sast-rules p/golang` |
 | `OPENCTEM_SCAN_IMAGE` | image to scan (`container.yml`) |
 | `OPENCTEM_DISABLED` | `"true"` turns every job off |
 
@@ -93,7 +93,7 @@ variables:
   HTTPS_PROXY: http://proxy.corp.example:3128
   NO_PROXY: .corp.example
   SSL_CERT_FILE: $CI_PROJECT_DIR/.ci/ca-bundle.pem      # every CA the scan must trust, public roots included
-  REQUESTS_CA_BUNDLE: $CI_PROJECT_DIR/.ci/ca-bundle.pem # the same file, for semgrep
+  REQUESTS_CA_BUNDLE: $CI_PROJECT_DIR/.ci/ca-bundle.pem # the same file, for the sast engine
 ```
 
 `openctem-ci` passes these to the scanners (and nothing else of the job's

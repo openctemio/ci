@@ -41,9 +41,10 @@ type Options struct {
 	Root string
 	// Image is the image reference to scan (the container capability).
 	Image string
-	// SemgrepConfig replaces the default semgrep rules (a registry pack
-	// such as p/default, or a path in the repository).
-	SemgrepConfig string
+	// SASTRules replaces the default sast rules (a registry pack such as
+	// p/default, fetched by the engine on this runner, or a path in the
+	// repository).
+	SASTRules string
 	// BaselineCommit is a pull request's merge base: sast reports only
 	// findings that are not already in that commit (semgrep
 	// --baseline-commit), secrets scans only the commits after it
@@ -72,10 +73,34 @@ type Result struct {
 	Duration time.Duration
 }
 
-// DefaultSemgrepConfig is the semgrep registry pack used when none is set.
-// It is fetched by semgrep at scan time; the image does not redistribute
-// registry rules.
-const DefaultSemgrepConfig = "p/default"
+// DefaultSASTRules is the registry pack used when no sast rules are set.
+// The engine fetches it on the CI runner at scan time; the image does not
+// redistribute registry rules.
+const DefaultSASTRules = "p/default"
+
+// SASTEngines are the sast engines, in order of preference: an image runs
+// the first one it has (ci-opengrep: opengrep; ci-semgrep: semgrep).
+var SASTEngines = []string{"opengrep", "semgrep"}
+
+// Resolve returns the capability with the tool this environment runs: for
+// sast, the first engine of SASTEngines on PATH (the catalog's when none
+// is, so the error names it).
+func Resolve(c capability.Capability, environ func() []string) capability.Capability {
+	if c.Name != "sast" {
+		return c
+	}
+	if environ == nil {
+		environ = os.Environ
+	}
+	env := FilterEnv(environ())
+	for _, t := range SASTEngines {
+		if _, err := lookPath(t, env); err == nil {
+			c.Tool = t
+			return c
+		}
+	}
+	return c
+}
 
 // Run runs the capability's tool.
 func Run(ctx context.Context, c capability.Capability, opts Options) (*Result, error) {
@@ -98,6 +123,7 @@ func Run(ctx context.Context, c capability.Capability, opts Options) (*Result, e
 	}
 	out := filepath.Join(dir, "report.json")
 
+	c = Resolve(c, opts.Environ)
 	argv, format, err := Command(c, opts, out)
 	if err != nil {
 		return nil, err
@@ -145,19 +171,31 @@ func Command(c capability.Capability, opts Options, out string) ([]string, impor
 	const target = "."
 	switch c.Name {
 	case "sast":
-		cfg := strings.TrimSpace(opts.SemgrepConfig)
+		cfg := strings.TrimSpace(opts.SASTRules)
 		if cfg == "" {
-			cfg = DefaultSemgrepConfig
+			cfg = DefaultSASTRules
 		}
 		if strings.HasPrefix(cfg, "-") {
-			return nil, "", fmt.Errorf("semgrep config %q must not start with '-'", cfg)
+			return nil, "", fmt.Errorf("sast rules %q must not start with '-'", cfg)
 		}
-		argv := []string{"semgrep", "scan", "--json", "--output", out, "--config", cfg,
-			"--metrics=off", "--disable-version-check", "--no-rewrite-rule-ids", "--quiet"}
+		// Rule ids as the rules write them (the finding identity holds the
+		// rule id). opengrep has no metrics and refuses --metrics; its
+		// version check is off unless asked for.
+		argv := []string{c.Tool, "scan", "--json", "--output", out, "--config", cfg,
+			"--disable-version-check", "--no-rewrite-rule-ids", "--quiet"}
+		format := importer.FormatOpengrep
+		switch c.Tool {
+		case "opengrep":
+		case "semgrep":
+			argv = append(argv, "--metrics=off")
+			format = importer.FormatSemgrep
+		default:
+			return nil, "", fmt.Errorf("no sast engine %q", c.Tool)
+		}
 		if CommitID(opts.BaselineCommit) {
 			argv = append(argv, "--baseline-commit", opts.BaselineCommit)
 		}
-		return append(argv, target), importer.FormatSemgrep, nil
+		return append(argv, target), format, nil
 	case "secrets":
 		// --exit-code 0: findings are not an error; the gate decides.
 		// Never --verbose: it prints every raw secret to the log.
@@ -207,21 +245,22 @@ func CheckImageRef(ref string) error {
 }
 
 // acceptedExit reports whether a non-zero exit still produced a usable
-// report. semgrep exits 1 when it found something and 2+ on errors; the
-// report is read either way and its absence is the error.
+// report. semgrep and opengrep exit 1 when they found something (with
+// --error) and 2+ on errors; the report is read either way and its
+// absence is the error.
 func acceptedExit(tool string, err error) bool {
 	var ee *exec.ExitError
 	if !errors.As(err, &ee) {
 		return false
 	}
-	return tool == "semgrep" && ee.ExitCode() == 1
+	return (tool == "semgrep" || tool == "opengrep") && ee.ExitCode() == 1
 }
 
 // Version asks a tool for its version ("" when it cannot say).
 func Version(ctx context.Context, tool string, environ func() []string) string {
 	var args []string
 	switch tool {
-	case "semgrep", "trivy":
+	case "semgrep", "opengrep", "trivy":
 		args = []string{"--version"}
 	case "betterleaks":
 		args = []string{"version"}
@@ -306,6 +345,10 @@ func toolEnv(tool, dir, target, root string) []string {
 	switch tool {
 	case "semgrep":
 		env = append(env, "SEMGREP_SEND_METRICS=off", "SEMGREP_ENABLE_VERSION_CHECK=0")
+	case "opengrep":
+		// Its log and settings ($XDG_CONFIG_HOME/.opengrep) go to the
+		// private output directory, not the job's home.
+		env = append(env, "XDG_CONFIG_HOME="+dir)
 	case "trivy":
 		env = append(env, "TRIVY_NO_PROGRESS=true")
 	}

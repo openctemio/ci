@@ -17,7 +17,7 @@ docker run --rm --read-only --tmpfs /tmp \
 ```
 
 - `--capability` is one of `sast`, `sca`, `secrets`, `iac` (one per run; the
-  `ci` image has every tool, the `ci-semgrep`, `ci-trivy` and `ci-betterleaks`
+  `ci` image has every tool, the `ci-opengrep`, `ci-semgrep`, `ci-trivy` and `ci-betterleaks`
   images one each).
 - `--user` and the `/home/openctem` tmpfs let the tools write their caches as
   you; without them a uid other than 1001 gets "permission denied".
