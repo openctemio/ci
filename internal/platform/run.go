@@ -88,11 +88,11 @@ const renewBefore = 2 * time.Minute
 
 // Response bounds.
 const (
-	maxErrBody   = 4 << 10
+	maxErrBody = 4 << 10
 	// defaultRetries repeats a request after a transient failure.
 	defaultRetries = 3
 	// gzipFrom: a request body at least this large is sent gzip-compressed.
-	gzipFrom = 4 << 10
+	gzipFrom     = 4 << 10
 	maxBody      = 8 << 20
 	maxTokenBody = 64 << 10
 )
