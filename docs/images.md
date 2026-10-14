@@ -44,6 +44,9 @@ verify the signature and run exactly that digest.
   the release's binary, pinned by version and SHA-256 per architecture, and
   its keyless signature is verified with cosign against the opengrep
   release workflow of that version at build time (no Python, no installer).
+  The OpenCTEM rules pack (`/opt/openctem/sast-rules`) is a release of
+  openctemio/sast-rules whose signature bundle is verified at build time
+  against that repository's release workflow at the exact tag.
 - **Automatic bumps.** Dependabot proposes tool, base-image, Python, Go and
   action updates weekly; each PR builds and smoke-tests every image.
 - **Signed.** Every published index and platform image is signed with cosign
@@ -72,7 +75,8 @@ verify the signature and run exactly that digest.
   none in the opengrep image at all. The opengrep runtime is unpacked at
   build time (`XDG_CACHE_HOME=/opt/opengrep/cache`) and runs read-only.
 - Network: the platform (`OPENCTEM_API_URL`), the rule registry (sast, only
-  when `--sast-rules` names a registry pack, as the default `p/default`
+  when `--sast-rules` names a registry pack such as `p/default`; the default
+  OpenCTEM rules pack is in the image
   does; rules in the repository need no network), the trivy
   vulnerability and check databases (sca, iac, container; cache them), and
   the image registry for `container`. Nothing else.

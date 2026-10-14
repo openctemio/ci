@@ -43,7 +43,7 @@ the capabilities, their tools and images) and `version`.
 | `--capability` | `$OPENCTEM_CAPABILITY` | the one capability to run |
 | `--target` | `.` | directory to scan, inside the workspace |
 | `--image` | | image reference to scan (`container`) |
-| `--sast-rules` | `$OPENCTEM_SAST_RULES`, else `p/default` | sast rules: a path in the repository, or a registry pack the engine fetches on the runner (`--semgrep-config` / `$OPENCTEM_SEMGREP_CONFIG` still work, with a deprecation warning) |
+| `--sast-rules` | `$OPENCTEM_SAST_RULES`, else the image's OpenCTEM rules pack (`ci-opengrep`), else `p/default` | `openctem` (the signed rules pack in the image), a path in the repository, or a registry pack the engine fetches on the runner (`--semgrep-config` / `$OPENCTEM_SEMGREP_CONFIG` still work, with a deprecation warning) |
 | `--sarif`, `--gitlab-report`, `--ctis` | | write SARIF, a GitLab security report or the CTIS report to this file |
 | `--status` | | write the job status for a later `gate` job to this file |
 | `--fail-on` | `$OPENCTEM_FAIL_ON` | local gate threshold (`critical`, `high`, `medium`, `low`, `info`), used when the platform gate cannot decide |
@@ -52,7 +52,7 @@ the capabilities, their tools and images) and `version`.
 | `--timeout` | `30m` | tool timeout |
 | `--diff` | `$OPENCTEM_DIFF`, else `auto` | on a pull or merge request, `auto`: `sast` reports only findings new since the merge base with the target branch, `secrets` scans only the commits after it (every commit of the change, so a secret added and removed again is still found); both need the history (`fetch-depth: 0`) and fall back to a full scan, saying why, without it. `off` scans in full. Default-branch runs always scan in full |
 
-A registry pack (such as the default `p/default`) is fetched by the engine on your runner at scan time and is used under the registry's own rules licence; the images do not include registry rules. Point `--sast-rules` at a path in the repository to run your own rules without fetching anything.
+The `ci-opengrep` image carries the OpenCTEM rules pack ([openctemio/sast-rules](https://github.com/openctemio/sast-rules)): a release whose cosign signature is verified against the pack's release workflow when the image is built. It is the default and needs no network. A registry pack (such as `p/default`) is fetched by the engine on your runner at scan time and is used under the registry's own rules licence; point `--sast-rules` at a path in the repository to run your own rules.
 
 `gate` flags: `--status-dir` (default `.`), `--expect` (capabilities that
 must have reported, default `$OPENCTEM_CAPABILITIES`), `--fail-on`, and

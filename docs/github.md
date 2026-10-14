@@ -93,7 +93,7 @@ Inputs of the action only:
 | Input | Default | |
 |---|---|---|
 | `path` | `.` | directory of the checkout, relative to the workspace |
-| `sast-rules` | `p/default` | sast rules: a path in the repository, or a registry pack the engine fetches on the runner |
+| `sast-rules` | the OpenCTEM rules pack in the image | `openctem` (the image's signed rules pack), a path in the repository, or a registry pack the engine fetches on the runner |
 | `semgrep-config` | | deprecated alias of `sast-rules` |
 | `aggregate` | `auto` | `auto` (several capabilities report into one run and one gate decides), `true` or `false` |
 | `skip-gate` | `false` | with `aggregate`: do not run the gate here (a later job runs `command: gate`) |
