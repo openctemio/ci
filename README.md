@@ -74,6 +74,7 @@ Repository gate settings: [docs/repository-file.md](docs/repository-file.md).
 - GitHub Actions: [docs/github.md](docs/github.md)
 - GitLab CI: [docs/gitlab.md](docs/gitlab.md)
 - Images, signatures and SBOMs: [docs/images.md](docs/images.md)
+- Local scans and pre-commit hooks: [docs/local.md](docs/local.md)
 - Azure Pipelines, Bitbucket Pipelines, CircleCI, Jenkins: [docs/other-ci.md](docs/other-ci.md) and [examples/](examples/)
 
 ## Development
