@@ -99,6 +99,7 @@ Inputs of the action only:
 | `skip-gate` | `false` | with `aggregate`: do not run the gate here (a later job runs `command: gate`) |
 | `command` | `scan` | `scan`, or `gate` (judge the status files of earlier capability jobs in `status-dir`) |
 | `status-dir` | | `command: gate`: directory, relative to the workspace, holding the `*.status.json` files |
+| `ca-bundle` | | self-hosted runners with a private CA: a PEM file in the workspace with every CA the scan must trust ([below](#self-hosted-runners-proxy-and-private-ca)) |
 
 Outputs of the action: `exit-code` (0 pass, 1 gate failed, 2 a scan cannot
 be trusted), `sarif-dir`, `status-dir`. The reusable workflow outputs
@@ -107,8 +108,9 @@ be trusted), `sarif-dir`, `status-dir`. The reusable workflow outputs
 ## Security notes
 
 - **No stored key.** The job's OIDC token is exchanged for a run token of at
-  most 15 minutes; set up the trust in OpenCTEM (Settings > Scanning > CI
-  pipelines). Do not grant `id-token: write` to jobs that do not need it.
+  most 15 minutes; set up the trust in OpenCTEM (**Discovery > CI/CD > Trust
+  and gate**). GitHub Enterprise Server and enterprise issuers are set there
+  too (**GitHub Enterprise issuer**). Do not grant `id-token: write` to jobs that do not need it.
 - **Forks.** A fork pull request gets no OIDC token from GitHub and is
   detected by `openctem-ci`: it scans only and never uploads. Do not run the
   scan on `pull_request_target` with the fork's code.
