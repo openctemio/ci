@@ -30,7 +30,7 @@ openctem-sast:
     # default depth is 20) often lacks it and falls back to a full scan.
     GIT_DEPTH: "0"
   image:
-    name: ghcr.io/openctemio/ci-semgrep:edge@sha256:be59c88ef0528fac0bb2515cbbaefa81c895a4421aa6b154561c96a038c0dbf1
+    name: ghcr.io/openctemio/ci-semgrep:edge@sha256:ee38062aa2d121109f8c0a598163770c115dbb1b976b9e38eeb79edf4ad42809
     entrypoint: [""]
   id_tokens:
     OPENCTEM_ID_TOKEN:
