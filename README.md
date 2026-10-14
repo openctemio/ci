@@ -62,6 +62,8 @@ must have reported, default `$OPENCTEM_CAPABILITIES`), `--fail-on`, and
 | `OPENCTEM_TENANT_ID` | organization id; turns on reporting with the job's OIDC identity |
 | `OPENCTEM_OIDC_AUDIENCE` | audience, when the trust configuration does not use `openctem:tenant:<id>` |
 | `OPENCTEM_ID_TOKEN_VAR` | the variable holding the job's token on GitLab (`id_tokens`), CircleCI and Jenkins (default `OPENCTEM_ID_TOKEN`) |
+| `OPENCTEM_RETRIES` | repeats after a transient failure, 0 to 10 (default 3): a network error, 429 (honouring `Retry-After`) or 5xx on upload and verdict; the token exchange only when nothing reached the platform (no connection, 429, 503), since the job's token is single use |
+| `OPENCTEM_UPLOAD_TIMEOUT` | time limit of one results upload, 10s to 1h (default `5m`); reports of 4 KiB and more are sent gzip-compressed |
 
 Without `OPENCTEM_TENANT_ID`, or in a fork pull request, the scan runs in
 scan-only mode: files and the local gate (`--fail-on`), no upload.

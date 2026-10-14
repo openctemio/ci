@@ -266,6 +266,7 @@ func TestToolFailure(t *testing.T) {
 func TestPlatformUnreachable(t *testing.T) {
 	h := setup(t)
 	h.env["OPENCTEM_API_URL"] = "http://127.0.0.1:1"
+	h.env["OPENCTEM_RETRIES"] = "0" // nothing listens: no point waiting on retries
 	if code, _, stderr := h.run("scan", "--capability", "secrets"); code != 2 {
 		t.Fatalf("no fallback threshold: exit %d %s", code, stderr)
 	}
