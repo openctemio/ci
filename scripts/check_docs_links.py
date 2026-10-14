@@ -42,6 +42,7 @@ SKIP_DIRS = {
 }
 SKIP_FILE = re.compile(r"(_test\.go|\.test\.[cm]?[jt]sx?|\.spec\.[cm]?[jt]sx?|_test\.py|CHANGELOG\.md)$")
 IGNORE = "docs-links: ignore"
+RELEASE_TAG = re.compile(r"v[0-9]+\.[0-9]+\.[0-9]+")
 
 END = r"[^\s\"'`<>()\[\]{}\\,|$%*]"
 # Not followed by more of a host name, a port or credentials.
@@ -144,6 +145,7 @@ class Repos:
         self.self_branch = self._branch(self_root)
         self.clones = {}
         self.tmp = None
+        self.untagged = set()
 
     @staticmethod
     def _branch(root):
@@ -178,7 +180,14 @@ class Repos:
                             ["git", "-C", dest, "checkout", "-q", "FETCH_HEAD"]):
                     if ok:
                         ok = subprocess.run(cmd, capture_output=True, text=True, env=env).returncode == 0
-                self.clones[key] = dest if ok else ""
+                if not ok and repo == self.self_name and RELEASE_TAG.fullmatch(ref):
+                    # The release this commit prepares: usage references
+                    # name it before it is tagged (docs/images.md,
+                    # Releasing), so it is checked against the working tree.
+                    self.clones[key] = self.self_root
+                    self.untagged.add(ref)
+                else:
+                    self.clones[key] = dest if ok else ""
         return self.clones[key]
 
 
@@ -294,6 +303,8 @@ def main(argv=None):
                     errors.append(f"{where}: {m.group(0)}: {err}")
                 if note:
                     warnings.add(note)
+    for t in sorted(repos.untagged):
+        warnings.add(f"{t} is not tagged yet: its links were checked against the working tree")
     for w in sorted(warnings):
         print(f"warning: {w}", file=sys.stderr)
     for e in errors:
