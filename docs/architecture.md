@@ -12,7 +12,7 @@ CI job ── checkout ──▶ openctem-ci scan --capability sast
                          │ 1. read the CI environment (repository, branch, commit, PR/MR, fork)
                          │ 2. resolve the target inside the workspace (symlinks followed)
                          │ 3. run the tool (fixed argv, filtered env, private temp dir, timeout);
-                         │    on a pull/merge request sast is diff-aware (semgrep --baseline-commit
+                         │    on a pull/merge request sast is diff-aware (opengrep --baseline-commit
                          │    at the merge base) and secrets scans only the change's commits
                          │    (betterleaks git --log-opts=<base>..HEAD) when the history is there,
                          │    else a full scan
@@ -36,7 +36,7 @@ taxonomy ids (`ctis/capability`), checked by a test.
 
 | Name | Capability id | Tool | Image | GitLab report |
 |---|---|---|---|---|
-| `sast` | `sast.code@1` | semgrep | `ghcr.io/openctemio/ci-semgrep` | `sast` |
+| `sast` | `sast.code@1` | opengrep (semgrep in `ci-semgrep`) | `ghcr.io/openctemio/ci-opengrep` | `sast` |
 | `sca` | `sca.deps@1` | trivy (`fs`, vulnerabilities) | `ghcr.io/openctemio/ci-trivy` | `dependency_scanning` |
 | `secrets` | `secrets.code@1` | betterleaks | `ghcr.io/openctemio/ci-betterleaks` | `secret_detection` |
 | `iac` | `iac.misconfig@1` | trivy (`config`) | `ghcr.io/openctemio/ci-trivy` | `sast` |
@@ -103,7 +103,7 @@ A platform that does not answer `aggregate: true` is refused
 | Hostile tool output (huge, deep, malformed) | Bounded reads (512 MB), `ctis/importer` limits; a parse error is a scan failure |
 | Platform or scanner text forges CI log lines | Control characters and `::` workflow-command prefixes are removed before printing |
 | A pull request changes scanner configuration committed in the tree to hide its own findings (a `trivy.yaml` severity threshold, a `.trivyignore`, a `.gitleaks.toml` allowlist, a `.betterleaksignore`) | Those files are not read: trivy runs with `--config ""` and `--ignorefile ""`, betterleaks with its built-in rules (unless the pipeline sets `BETTERLEAKS_CONFIG*`) and an ignore path outside the tree; configuration comes from the pipeline, exceptions are requested in `.openctem.yml` and approved in OpenCTEM. Residual: semgrep honours `.semgrepignore` and `nosemgrep` comments; the platform's full scans of protected branches run with the platform's configuration |
-| Option injection through user input | Fixed argument lists, no shell; image references and semgrep configs that start with `-` are refused |
+| Option injection through user input | Fixed argument lists, no shell; image references and sast rules that start with `-` are refused |
 | A broken scan turns the pipeline green | Every failure exits 2 and is recorded as a scan failure on the run; the gate job counts missing statuses |
 
 ## Local gate

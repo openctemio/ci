@@ -2,6 +2,7 @@
 
 | Image | Tools | Capabilities |
 |---|---|---|
+| `ghcr.io/openctemio/ci-opengrep` | opengrep | `sast` (default) |
 | `ghcr.io/openctemio/ci-semgrep` | semgrep | `sast` |
 | `ghcr.io/openctemio/ci-trivy` | trivy | `sca`, `iac`, `container` |
 | `ghcr.io/openctemio/ci-betterleaks` | betterleaks | `secrets` |
@@ -39,7 +40,10 @@ verify the signature and run exactly that digest.
   (`scripts/check-image-pins.sh` refuses a tag-only `FROM` and keeps one pin
   per image across the Dockerfiles). trivy and betterleaks come from their
   official images; semgrep and its dependencies are installed with
-  `pip --require-hashes` from `images/semgrep/requirements.txt`.
+  `pip --require-hashes` from `images/semgrep/requirements.txt`. opengrep is
+  the release's binary, pinned by version and SHA-256 per architecture, and
+  its keyless signature is verified with cosign against the opengrep
+  release workflow of that version at build time (no Python, no installer).
 - **Automatic bumps.** Dependabot proposes tool, base-image, Python, Go and
   action updates weekly; each PR builds and smoke-tests every image.
 - **Signed.** Every published index and platform image is signed with cosign
@@ -64,8 +68,11 @@ verify the signature and run exactly that digest.
   writable without chown). Run with `--user "$(id -u):$(id -g)"` elsewhere.
 - Works with a read-only root filesystem: give it a tmpfs for `/tmp` and
   `$HOME` (`/home/openctem`), as the smoke test and the GitHub Action do.
-- No package installer in the semgrep images (pip removed after install).
-- Network: the platform (`OPENCTEM_API_URL`), the semgrep rule registry
-  (sast, unless `--semgrep-config` names rules in the repository), the trivy
+- No package installer in the semgrep images (pip removed after install);
+  none in the opengrep image at all. The opengrep runtime is unpacked at
+  build time (`XDG_CACHE_HOME=/opt/opengrep/cache`) and runs read-only.
+- Network: the platform (`OPENCTEM_API_URL`), the rule registry (sast, only
+  when `--sast-rules` names a registry pack, as the default `p/default`
+  does; rules in the repository need no network), the trivy
   vulnerability and check databases (sca, iac, container; cache them), and
   the image registry for `container`. Nothing else.

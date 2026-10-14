@@ -93,7 +93,8 @@ Inputs of the action only:
 | Input | Default | |
 |---|---|---|
 | `path` | `.` | directory of the checkout, relative to the workspace |
-| `semgrep-config` | `p/default` | semgrep rule pack or a path in the repository |
+| `sast-rules` | `p/default` | sast rules: a path in the repository, or a registry pack the engine fetches on the runner |
+| `semgrep-config` | | deprecated alias of `sast-rules` |
 | `aggregate` | `auto` | `auto` (several capabilities report into one run and one gate decides), `true` or `false` |
 | `skip-gate` | `false` | with `aggregate`: do not run the gate here (a later job runs `command: gate`) |
 | `command` | `scan` | `scan`, or `gate` (judge the status files of earlier capability jobs in `status-dir`) |

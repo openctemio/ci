@@ -10,7 +10,7 @@
 version: 2
 updates:
   - package-ecosystem: docker
-    directories: ["/images/semgrep", "/images/trivy", "/images/betterleaks", "/images/all"]
+    directories: ["/images/opengrep", "/images/semgrep", "/images/trivy", "/images/betterleaks", "/images/all"]
     schedule:
       interval: weekly
       day: monday

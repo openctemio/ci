@@ -15,7 +15,7 @@ tag="${1:?usage: pin-images.sh <tag>}"
 command -v cosign >/dev/null || { echo "cosign is required (https://docs.sigstore.dev)" >&2; exit 2; }
 
 files=$(ls gitlab/templates/*.yml examples/*/* 2>/dev/null || true)
-for name in ci ci-semgrep ci-trivy ci-betterleaks; do
+for name in ci ci-opengrep ci-semgrep ci-trivy ci-betterleaks; do
   ref="ghcr.io/openctemio/${name}:${tag}"
   digest="$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' | jq -r .digest)"
   [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "cannot resolve $ref" >&2; exit 1; }

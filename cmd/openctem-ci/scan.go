@@ -34,6 +34,7 @@ type scanFlags struct {
 	capability    string
 	target        string
 	image         string
+	sastRules     string
 	semgrepConfig string
 	sarifOut      string
 	gitlabOut     string
@@ -53,7 +54,8 @@ func cmdScan(ctx context.Context, args []string, stdout, stderr io.Writer, e env
 	fs.StringVar(&f.capability, "capability", e.getenv("OPENCTEM_CAPABILITY"), "capability to run: "+capability.Names())
 	fs.StringVar(&f.target, "target", ".", "directory to scan, inside the workspace")
 	fs.StringVar(&f.image, "image", "", "image reference to scan (container capability)")
-	fs.StringVar(&f.semgrepConfig, "semgrep-config", e.getenv("OPENCTEM_SEMGREP_CONFIG"), "semgrep rules: a registry pack or a path in the repository (default "+scanner.DefaultSemgrepConfig+")")
+	fs.StringVar(&f.sastRules, "sast-rules", e.getenv("OPENCTEM_SAST_RULES"), "sast rules: a registry pack (fetched on this runner) or a path in the repository (default "+scanner.DefaultSASTRules+")")
+	fs.StringVar(&f.semgrepConfig, "semgrep-config", e.getenv("OPENCTEM_SEMGREP_CONFIG"), "deprecated: use -sast-rules")
 	fs.StringVar(&f.sarifOut, "sarif", "", "write the findings as SARIF to this file")
 	fs.StringVar(&f.gitlabOut, "gitlab-report", "", "write the findings as a GitLab security report to this file")
 	fs.StringVar(&f.ctisOut, "ctis", "", "write the CTIS report to this file")
@@ -118,6 +120,7 @@ func (s *scanJob) warnf(format string, a ...any) {
 
 func (s *scanJob) run(ctx context.Context) int {
 	s.info = ciinfo.Detect(s.e.getenv)
+	s.c = scanner.Resolve(s.c, s.e.environ)
 	s.status = status{Capability: s.c.Name, Tool: s.c.Tool}
 	s.logf("openctem-ci %s: %s (%s) with %s", Version, s.c.Name, s.c.ID, s.c.Tool)
 
@@ -152,9 +155,14 @@ func (s *scanJob) run(ctx context.Context) int {
 		s.logf("[%s] %s", s.c.Tool, note)
 	}
 
+	rules := strings.TrimSpace(s.f.sastRules)
+	if rules == "" && strings.TrimSpace(s.f.semgrepConfig) != "" {
+		rules = strings.TrimSpace(s.f.semgrepConfig)
+		s.warnf("semgrep-config (OPENCTEM_SEMGREP_CONFIG) is deprecated: use sast-rules (OPENCTEM_SAST_RULES)")
+	}
 	start := time.Now()
 	res, err := scanner.Run(ctx, s.c, scanner.Options{Target: targetAbs, Root: s.info.Workspace, Image: strings.TrimSpace(s.f.image),
-		SemgrepConfig: s.f.semgrepConfig, BaselineCommit: baseline, Timeout: s.f.timeout, Environ: s.e.environ, Stderr: s.stderr})
+		SASTRules: rules, BaselineCommit: baseline, Timeout: s.f.timeout, Environ: s.e.environ, Stderr: s.stderr})
 	if err != nil {
 		return s.fail(ctx, err)
 	}
