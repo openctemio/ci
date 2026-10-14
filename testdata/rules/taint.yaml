@@ -1,0 +1,17 @@
+# A taint rule for the self-test: a Flask request value reaching a shell or
+# an SQL string. The fixture (testdata/fixture/app/app.py) has both, so a
+# scan with this rule must report a finding with a data flow (source, sink).
+rules:
+  - id: openctem-selftest.flask-request-to-sink
+    languages: [python]
+    severity: ERROR
+    message: Request data reaches a command or a query.
+    metadata:
+      cwe: ["CWE-78: Improper Neutralization of Special Elements used in an OS Command"]
+      category: security
+    mode: taint
+    pattern-sources:
+      - pattern: flask.request.args.get(...)
+    pattern-sinks:
+      - pattern: subprocess.check_output($CMD, ...)
+      - pattern: $CONN.execute($Q, ...)

@@ -42,13 +42,14 @@ func TestCommand(t *testing.T) {
 	// opengrep (the default engine) refuses --metrics; semgrep gets it.
 	argv, format, _ := Command(capOf(t, "sast"), Options{}, "o")
 	if j := strings.Join(argv, " "); argv[0] != "opengrep" || strings.Contains(j, "--metrics") || !strings.Contains(j, DefaultSASTRules) ||
-		!strings.Contains(j, "--no-rewrite-rule-ids") || format != importer.FormatOpengrep {
+		!strings.Contains(j, "--no-rewrite-rule-ids") || !strings.Contains(j, "--dataflow-traces") || format != importer.FormatOpengrep {
 		t.Errorf("opengrep: %v %s", argv, format)
 	}
 	sg := capOf(t, "sast")
 	sg.Tool = "semgrep"
 	argv, format, _ = Command(sg, Options{SASTRules: "rules/"}, "o")
-	if j := strings.Join(argv, " "); argv[0] != "semgrep" || !strings.Contains(j, "--metrics=off") || !strings.Contains(j, "--config rules/") || format != importer.FormatSemgrep {
+	if j := strings.Join(argv, " "); argv[0] != "semgrep" || !strings.Contains(j, "--metrics=off") || !strings.Contains(j, "--config rules/") ||
+		!strings.Contains(j, "--dataflow-traces") || format != importer.FormatSemgrep {
 		t.Errorf("semgrep: %v %s", argv, format)
 	}
 	if _, _, err := Command(capOf(t, "sast"), Options{SASTRules: "--dangerous"}, "o"); err == nil {
