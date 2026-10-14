@@ -100,6 +100,7 @@ A platform that does not answer `aggregate: true` is refused
 | A report names another repository or a path outside the checkout | The target must resolve inside the workspace; the report keeps one repository asset; paths outside the repository are cleared; the platform re-validates (`ScopeReport`) |
 | Hostile tool output (huge, deep, malformed) | Bounded reads (512 MB), `ctis/importer` limits; a parse error is a scan failure |
 | Platform or scanner text forges CI log lines | Control characters and `::` workflow-command prefixes are removed before printing |
+| A pull request changes scanner configuration committed in the tree to hide its own findings (a `trivy.yaml` severity threshold, a `.trivyignore`, a `.gitleaks.toml` allowlist, a `.betterleaksignore`) | Those files are not read: trivy runs with `--config ""` and `--ignorefile ""`, betterleaks with its built-in rules (unless the pipeline sets `BETTERLEAKS_CONFIG*`) and an ignore path outside the tree; configuration comes from the pipeline, exceptions are requested in `.openctem.yml` and approved in OpenCTEM. Residual: semgrep honours `.semgrepignore` and `nosemgrep` comments; the platform's full scans of protected branches run with the platform's configuration |
 | Option injection through user input | Fixed argument lists, no shell; image references and semgrep configs that start with `-` are refused |
 | A broken scan turns the pipeline green | Every failure exits 2 and is recorded as a scan failure on the run; the gate job counts missing statuses |
 

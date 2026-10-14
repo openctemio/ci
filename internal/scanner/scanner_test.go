@@ -119,6 +119,9 @@ env > "$out"
 	if !strings.Contains(out, "BETTERLEAKS_CONFIG=/x") {
 		t.Fatalf("tool configuration dropped:\n%s", out)
 	}
+	if strings.Contains(out, "BETTERLEAKS_CONFIG_TOML=") {
+		t.Fatalf("the pipeline's betterleaks configuration was overridden:\n%s", out)
+	}
 	var tmp string
 	for _, l := range strings.Split(out, "\n") {
 		if strings.HasPrefix(l, "TMPDIR=") {
@@ -174,4 +177,49 @@ func TestCommandBaselineCommit(t *testing.T) {
 			t.Fatalf("baseline %q used: %v", bad, argv)
 		}
 	}
+}
+
+// A file committed in the scanned tree (the change under review) must not
+// configure the scanners: a pull request could raise trivy's severity
+// threshold, add a .trivyignore, or allowlist its own secret in
+// .gitleaks.toml and pass the gate.
+func TestRepositoryFilesDoNotConfigureScanners(t *testing.T) {
+	for _, name := range []string{"sca", "iac"} {
+		argv, _, err := Command(capOf(t, name), Options{}, "/tmp/x/report.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hasFlagValue(argv, "--config", "") || !hasFlagValue(argv, "--ignorefile", "") {
+			t.Errorf("%s: trivy would read trivy.yaml or .trivyignore from the tree: %v", name, argv)
+		}
+	}
+	argv, _, err := Command(capOf(t, "secrets"), Options{}, "/tmp/x/report.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFlagValue(argv, "--gitleaks-ignore-path", "/tmp/x") {
+		t.Errorf("betterleaks would read an ignore file from the tree: %v", argv)
+	}
+
+	got := defaultConfigEnv("betterleaks", []string{"PATH=/bin"})
+	if len(got) != 1 || got[0] != "BETTERLEAKS_CONFIG_TOML=[extend]\nuseDefault = true\n" {
+		t.Errorf("betterleaks would read .gitleaks.toml from the tree: %q", got)
+	}
+	for _, k := range []string{"BETTERLEAKS_CONFIG", "GITLEAKS_CONFIG", "BETTERLEAKS_CONFIG_TOML", "GITLEAKS_CONFIG_TOML"} {
+		if got := defaultConfigEnv("betterleaks", []string{k + "=x"}); got != nil {
+			t.Errorf("the pipeline's %s was overridden: %q", k, got)
+		}
+	}
+	if got := defaultConfigEnv("trivy", nil); got != nil {
+		t.Errorf("trivy: %q", got)
+	}
+}
+
+func hasFlagValue(argv []string, flag, value string) bool {
+	for i := 0; i+1 < len(argv); i++ {
+		if argv[i] == flag && argv[i+1] == value {
+			return true
+		}
+	}
+	return false
 }
