@@ -46,6 +46,13 @@ OpenCTEM is not shown again:
   judged again. Only the hash leaves the job.
 - Without the platform (`--no-push`, a fork, an upload failure) nothing is
   hidden: the job cannot know.
+- Taint traces: sast runs with `--dataflow-traces`. A taint result goes up with
+  the path from the source to the sink (the CTIS `data_flow`: file, line and
+  code of each step, paths relative to the repository). The finding page
+  shows it, and it never changes the finding's identity. opengrep writes the
+  trace; semgrep's open-source engine no longer does, so `ci-semgrep` results
+  carry none. The image smoke test scans the fixture with
+  `testdata/rules/taint.yaml` and requires a data flow on both of its flows.
 
 Exit codes: `0` pass (or no gate asked), `1` the gate failed, `2` the scan
 cannot be trusted (tool, parse, upload, redaction or configuration error).

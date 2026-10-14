@@ -65,4 +65,30 @@ for cap in $caps; do
     fail=1
   fi
 done
+
+# Taint traces: with the self-test taint rule (testdata/rules/taint.yaml) the
+# engine reports the fixture's request-to-command and request-to-query flows,
+# and the CTIS report carries each one as a data flow with a source and a
+# sink. opengrep writes the trace; semgrep's open-source engine no longer
+# does (checked with 1.180.0), so the check is required for opengrep only.
+if [ "$variant" = opengrep ]; then
+  mkdir -p "$work/.openctem-selftest"
+  cp "$root/testdata/rules/taint.yaml" "$work/.openctem-selftest/taint.yaml"
+  chmod -R a+rwX "$work"
+  if docker run --rm --read-only --tmpfs /tmp --tmpfs /home/openctem:uid=1001,gid=1001 \
+      -v "$work:/src" -e OPENCTEM_WORKSPACE=/src -e OPENCTEM_REPOSITORY=github.com/openctemio/ci-fixture \
+      "$image" scan --capability sast --target /src --sast-rules .openctem-selftest/taint.yaml \
+      --ctis /src/taint.ctis.json >"$work/taint.log" 2>&1; then
+    n=$(jq '[.findings[] | select((.data_flow.sources | length) > 0 and (.data_flow.sinks | length) > 0)] | length' "$work/taint.ctis.json")
+    echo "ok   taint: $n finding(s) with a data flow"
+    if [ "$n" -lt 2 ]; then
+      echo "FAIL taint: want the 2 fixture flows with a source and a sink" >&2
+      fail=1
+    fi
+  else
+    echo "FAIL taint scan:" >&2
+    tail -n 20 "$work/taint.log" >&2
+    fail=1
+  fi
+fi
 exit "$fail"
