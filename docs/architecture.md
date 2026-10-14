@@ -19,6 +19,7 @@ CI job ── checkout ──▶ openctem-ci scan --capability sast
                          │ 4. convert its native output to CTIS (ctis/importer)
                          │ 5. scope: one repository asset, repository-relative paths;
                          │    sast: the hash of each result's flagged lines (snippetHash/v1)
+                         │    secrets: HMAC-SHA256 of each raw secret under the run's key (secretHMAC/v1)
                          │ 6. redact: mask secrets everywhere, then check every output
                          │ 7. exchange the job's OIDC token for a run token, upload every result
                          │ 8. leave out the results the platform says are already decided,
@@ -128,7 +129,7 @@ A platform that does not answer `aggregate: true` is refused
 | A fork pull/merge request exfiltrates the platform credential or uploads forged results | A fork is detected from the event (GitHub: head repository differs or is a fork; GitLab: source project differs) and never uploads or uses a credential; GitHub gives forks no OIDC token; the platform trust refuses forks by default |
 | A long-lived key leaks from CI settings or logs | No key exists: OIDC per job, short-lived run token, never printed |
 | A scanned repository runs code through the tool's environment | The tool gets an allow-listed environment (no OIDC request token, ID token, job token, platform or API key); the tool is resolved only from absolute PATH entries |
-| A raw secret reaches the platform, an artifact or the log | Secret scanner output goes to a private 0700 temp dir, removed after the run; every finding is masked (`ctis.RedactSecretFinding` with the raw values); every output is checked for the raw values before it is written or sent, and the run stops instead (`ErrSecretInOutput`); SARIF and GitLab reports carry no snippet; the secret scanner is never run with `--verbose` |
+| A raw secret reaches the platform, an artifact or the log | Each secret goes up only as `HMAC-SHA256` of its raw value under the key the exchange hands the run (per organization and repository; CTIS partial fingerprint `secretHMAC/v1`), so the platform keys the finding on the secret without seeing it. Secret scanner output goes to a private 0700 temp dir, removed after the run; every finding is masked (`ctis.RedactSecretFinding` with the raw values); every output is checked for the raw values before it is written or sent, and the run stops instead (`ErrSecretInOutput`); SARIF and GitLab reports carry no snippet; the secret scanner is never run with `--verbose` |
 | A report names another repository or a path outside the checkout | The target must resolve inside the workspace; the report keeps one repository asset; paths outside the repository are cleared; the platform re-validates (`ScopeReport`) |
 | Hostile tool output (huge, deep, malformed) | Bounded reads (512 MB), `ctis/importer` limits; a parse error is a scan failure |
 | Platform or scanner text forges CI log lines | Control characters and `::` workflow-command prefixes are removed before printing |

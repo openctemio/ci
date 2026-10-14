@@ -72,6 +72,15 @@ scan-only mode: files and the local gate (`--fail-on`), no upload.
 
 Exit codes: `0` pass, `1` the gate failed, `2` the scan cannot be trusted.
 
+After an upload, results that OpenCTEM has already decided (false positive,
+duplicate, accepted risk that has not ended, approved exception) are left out
+of the job's summary, SARIF and merge request report; the CTIS file keeps
+every result. Inline ignore comments and ignore files in the scanned tree do
+not hide results: they go to OpenCTEM as requests
+([docs/repository-file.md](docs/repository-file.md)). The raw value of a
+secret never leaves the job: it is masked, and keyed by an HMAC of its value. OpenCTEM v0.9.6 and later accept v0.3.0
+and later only.
+
 Design, identity and threat model: [docs/architecture.md](docs/architecture.md).
 Repository gate settings: [docs/repository-file.md](docs/repository-file.md).
 

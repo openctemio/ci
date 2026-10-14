@@ -24,8 +24,8 @@ gate:
   anything looser is ignored. The file can never make a finding pass.
 - An exception becomes a **pending suppression request** on the repository in
   OpenCTEM, sent only from default-branch runs (once the file is reviewed and
-  merged), once per rule and path. It has no effect until an administrator
-  approves it.
+  merged) of a commit the CI provider signed, never from a fork, once per rule
+  and path. It has no effect until an administrator approves it.
 - The organization can forbid repository files (`allow_repo_policy: false`
   on a gate policy); the verdict then says the file was ignored.
 - A file `openctem-ci` cannot read or parse (unknown keys included, so a
@@ -43,3 +43,14 @@ request must not be able to hide its own findings. Use an exception in this
 file instead; it is reviewed in OpenCTEM. A pipeline that needs its own
 betterleaks rules sets `BETTERLEAKS_CONFIG` (a path) or
 `BETTERLEAKS_CONFIG_TOML` (the content) in the workflow.
+
+## Inline ignore comments are claims
+
+SAST runs with `--disable-nosem` and `--x-ignore-semgrepignore-files`. A
+result under an inline ignore comment (`nosemgrep`, `nosem`, `noopengrep`,
+on the flagged line or the line above) is still reported, marked as an
+in-source claim, and counted by the gate. The patterns of a `.semgrepignore`
+at the repository root (at most 20) are sent as claims too. OpenCTEM turns
+the claims of a default-branch run into pending suppression requests (90
+days), like the exceptions above, when the gate policy allows repository
+files. A result stops counting once its request is approved.
