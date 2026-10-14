@@ -74,6 +74,9 @@ jobs:
       - name: Actions are pinned to commit SHAs
         run: bash .github/scripts/check-action-pins.sh
 
+      - name: Action helpers (signer identity, proxy, CA bundle)
+        run: bash .github/scripts/action-lib.test.sh
+
       # Usage references name one full release version (never @v1), and the
       # GitLab templates and examples pin image digests (docs/images.md).
       - name: Release references and image pins
