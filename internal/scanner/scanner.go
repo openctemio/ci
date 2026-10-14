@@ -44,9 +44,11 @@ type Options struct {
 	// SemgrepConfig replaces the default semgrep rules (a registry pack
 	// such as p/default, or a path in the repository).
 	SemgrepConfig string
-	// BaselineCommit, for sast, makes semgrep report only findings that are
-	// not already in that commit (a pull request's merge base): a diff-aware
-	// scan. Anything but a commit id is ignored.
+	// BaselineCommit is a pull request's merge base: sast reports only
+	// findings that are not already in that commit (semgrep
+	// --baseline-commit), secrets scans only the commits after it
+	// (betterleaks git --log-opts=<base>..HEAD). Anything but a commit id
+	// is ignored and the scan is full.
 	BaselineCommit string
 	// Timeout of the tool (default 30 minutes).
 	Timeout time.Duration
@@ -162,9 +164,16 @@ func Command(c capability.Capability, opts Options, out string) ([]string, impor
 		// --gitleaks-ignore-path points at the private output directory, so
 		// an ignore file committed in the scanned tree is not read
 		// (repoFilesIgnored).
-		return []string{"betterleaks", "dir", target, "--report-format", "json", "--report-path", out,
+		mode := []string{"betterleaks", "dir", target}
+		if CommitID(opts.BaselineCommit) {
+			// A pull or merge request: only the commits the change adds,
+			// every one of them (a secret added then removed in the same
+			// change is still leaked in its history).
+			mode = []string{"betterleaks", "git", target, "--log-opts=" + opts.BaselineCommit + "..HEAD"}
+		}
+		return append(mode, "--report-format", "json", "--report-path", out,
 			"--exit-code", "0", "--no-banner", "--ignore-gitleaks-allow",
-			"--gitleaks-ignore-path", filepath.Dir(out)}, importer.FormatBetterleaks, nil
+			"--gitleaks-ignore-path", filepath.Dir(out)), importer.FormatBetterleaks, nil
 	case "sca":
 		return []string{"trivy", "fs", "--scanners", "vuln", "--format", "json", "--output", out,
 			"--exit-code", "0", "--quiet", "--config", "", "--ignorefile", "", target}, importer.FormatTrivy, nil
