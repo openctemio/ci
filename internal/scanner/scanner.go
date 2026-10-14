@@ -163,6 +163,11 @@ func Run(ctx context.Context, c capability.Capability, opts Options) (*Result, e
 	return &Result{Tool: c.Tool, Version: version, Output: data, Format: format, Duration: dur}, nil
 }
 
+// DefaultSASTExcludes are the paths a SAST scan skips: dependencies, build
+// output and tests, the list an absent ignore file would apply.
+var DefaultSASTExcludes = []string{"node_modules", "build", "dist", "vendor", ".env", ".venv", ".tox",
+	"*.min.js", ".npm", ".yarn", "test", "tests", "*_test.go"}
+
 // Command returns the argument list of a capability's tool, writing its
 // report to out, and the importer format of that report.
 func Command(c capability.Capability, opts Options, out string) ([]string, importer.Format, error) {
@@ -183,8 +188,18 @@ func Command(c capability.Capability, opts Options, out string) ([]string, impor
 		// version check is off unless asked for. --dataflow-traces: a taint
 		// finding carries the path from the source to the sink
 		// (dataflow_trace, the finding's data_flow); both engines take it.
+		// --disable-nosem and --x-ignore-semgrepignore-files: an inline
+		// ignore comment or a .semgrepignore in the scanned tree is the
+		// author's claim, not a decision; the results are reported and the
+		// claims go to OpenCTEM as requests (internal/claims). The paths a
+		// default ignore file would skip are excluded here instead, from the
+		// pipeline, not the repository.
 		argv := []string{c.Tool, "scan", "--json", "--output", out, "--config", cfg,
-			"--disable-version-check", "--no-rewrite-rule-ids", "--dataflow-traces", "--quiet"}
+			"--disable-version-check", "--no-rewrite-rule-ids", "--dataflow-traces", "--quiet",
+			"--disable-nosem", "--x-ignore-semgrepignore-files"}
+		for _, x := range DefaultSASTExcludes {
+			argv = append(argv, "--exclude", x)
+		}
 		format := importer.FormatOpengrep
 		switch c.Tool {
 		case "opengrep":

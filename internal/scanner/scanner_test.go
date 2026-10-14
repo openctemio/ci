@@ -322,3 +322,22 @@ func TestToolEnvOpengrep(t *testing.T) {
 		t.Errorf("env %s", env)
 	}
 }
+
+// Inline ignore comments and the tree's .semgrepignore never hide a result:
+// both engines run with --disable-nosem and --x-ignore-semgrepignore-files,
+// and the default excludes come from the pipeline.
+func TestSASTIgnoresRepositoryClaims(t *testing.T) {
+	for _, tool := range []string{"opengrep", "semgrep"} {
+		c := capOf(t, "sast")
+		c.Tool = tool
+		argv, _, err := Command(c, Options{Target: "."}, "/tmp/out.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		j := strings.Join(argv, " ")
+		if !strings.Contains(j, "--disable-nosem") || !strings.Contains(j, "--x-ignore-semgrepignore-files") ||
+			!strings.Contains(j, "--exclude node_modules") {
+			t.Errorf("%s: %s", tool, j)
+		}
+	}
+}
