@@ -150,7 +150,7 @@ func (s *scanJob) run(ctx context.Context) int {
 	}
 
 	start := time.Now()
-	res, err := scanner.Run(ctx, s.c, scanner.Options{Target: targetAbs, Image: strings.TrimSpace(s.f.image),
+	res, err := scanner.Run(ctx, s.c, scanner.Options{Target: targetAbs, Root: s.info.Workspace, Image: strings.TrimSpace(s.f.image),
 		SemgrepConfig: s.f.semgrepConfig, BaselineCommit: baseline, Timeout: s.f.timeout, Environ: s.e.environ, Stderr: s.stderr})
 	if err != nil {
 		return s.fail(ctx, err)

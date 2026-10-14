@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -62,5 +63,39 @@ func TestBaselineCommit(t *testing.T) {
 	// A git answer that is not a commit id is not used.
 	if sha, _ := baselineCommit(ctx, "auto", pr, none, fakeGit(map[string]string{"merge-base HEAD refs/remotes/origin/main": "--evil"})); sha != "" {
 		t.Fatalf("non-commit answer used: %q", sha)
+	}
+}
+
+// The diff git calls trust exactly the checkout: a checkout owned by another
+// user (GitLab's docker executor clones as root) is otherwise refused as a
+// dubious-ownership repository and the scan silently falls back to full.
+func TestGitEnvTrustsTheCheckoutOnly(t *testing.T) {
+	env := strings.Join(gitEnv("/builds/acme/api"), "\n")
+	for _, want := range []string{"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=safe.directory", "GIT_CONFIG_VALUE_0=/builds/acme/api", "GIT_TERMINAL_PROMPT=0"} {
+		if !strings.Contains(env, want) {
+			t.Errorf("missing %s in\n%s", want, env)
+		}
+	}
+	if strings.Contains(env, "=*") {
+		t.Errorf("every directory trusted:\n%s", env)
+	}
+}
+
+// End to end with a real repository owned by this user: the merge base is
+// found through gitEnv (a smoke test that the environment does not break git).
+func TestRunGitWithTrustedCheckout(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	dir := t.TempDir()
+	for _, args := range [][]string{{"init", "-q", "-b", "main"}, {"-c", "user.email=a@b.c", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "x"}} {
+		c := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		c.Env = gitEnv(dir)
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	if out, err := runGit(context.Background(), dir, "rev-parse", "HEAD"); err != nil || len(out) != 40 {
+		t.Fatalf("rev-parse: %q %v", out, err)
 	}
 }
