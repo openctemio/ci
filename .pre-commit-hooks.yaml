@@ -1,0 +1,19 @@
+# pre-commit hooks (https://pre-commit.com). Each runs the CI runner image on
+# the working tree as pre-commit leaves it (the staged changes; unstaged ones
+# are stashed), uploads nothing and fails the commit on a finding at or above
+# the threshold. Requires Docker. HOME points at the container's /tmp: the
+# hooks run as your user, who has no home in the image.
+- id: openctem-secrets
+  name: OpenCTEM secrets
+  description: Refuse a commit that adds a secret (betterleaks, built-in rules; repository ignore files are not read).
+  language: docker_image
+  entry: --entrypoint env ghcr.io/openctemio/ci-betterleaks:v0.3.0 HOME=/tmp openctem-ci scan --capability secrets --no-push --fail-on low
+  pass_filenames: false
+  always_run: true
+- id: openctem-sast
+  name: OpenCTEM static analysis
+  description: Refuse a commit with a high or critical static analysis finding (semgrep).
+  language: docker_image
+  entry: --entrypoint env ghcr.io/openctemio/ci-semgrep:v0.3.0 HOME=/tmp openctem-ci scan --capability sast --no-push --fail-on high
+  pass_filenames: false
+  always_run: true
