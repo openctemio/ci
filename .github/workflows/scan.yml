@@ -6,7 +6,7 @@ name: OpenCTEM scan
 #
 #   jobs:
 #     openctem:
-#       uses: openctemio/ci/.github/workflows/scan.yml@v1
+#       uses: openctemio/ci/.github/workflows/scan.yml@v0.3.0
 #       with:
 #         capabilities: sast,sca,secrets
 #         api-url: https://openctem.example.com
@@ -14,7 +14,9 @@ name: OpenCTEM scan
 #       permissions:
 #         contents: read
 #         id-token: write
-#         security-events: write   # only with upload-sarif: true
+#         security-events: write   # required even without upload-sarif: GitHub
+#                                    # checks every job's permissions when the
+#                                    # workflow starts
 #
 # The jobs run the action of this workflow's own commit (job.workflow_sha),
 # so a pinned workflow never runs a different action version.
@@ -107,8 +109,9 @@ jobs:
           [ "${#out[@]}" -gt 0 ] || { echo "::error::no capability"; exit 1; }
           echo "capabilities=$(printf '%s\n' "${out[@]}" | jq -Rnc '[inputs]')" >> "$GITHUB_OUTPUT"
           echo "list=$(IFS=,; echo "${out[*]}")" >> "$GITHUB_OUTPUT"
-          # The image tag follows this workflow's ref: @v1 / @v1.2.3 run the
-          # matching images, anything else the images built from main.
+          # The image tag follows this workflow's ref: a release tag (@v0.3.0)
+          # or a major tag that releases publish (@v0) runs the matching
+          # images, anything else the images built from main.
           if [ -z "$TAG" ]; then
             ref="${WORKFLOW_REF##*@}"
             if [[ "$ref" =~ ^refs/tags/(v[0-9]+(\.[0-9]+\.[0-9]+)?)$ ]]; then TAG="${BASH_REMATCH[1]}"; else TAG=edge; fi

@@ -77,6 +77,11 @@ jobs:
       - name: Action helpers (signer identity, proxy, CA bundle)
         run: bash .github/scripts/action-lib.test.sh
 
+      # Usage references name one full release version (never @v1), and the
+      # GitLab templates and examples pin image digests (docs/images.md).
+      - name: Release references and image pins
+        run: bash scripts/check-release-refs.sh
+
       - name: Customer identifiers (self-test)
         run: bash .github/scripts/check-customer-identifiers.test.sh >/dev/null
 

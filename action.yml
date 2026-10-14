@@ -13,7 +13,7 @@ branding:
 #     security-events: write   # only with upload-sarif: true
 #   steps:
 #     - uses: actions/checkout@<sha>
-#     - uses: openctemio/ci@v1
+#     - uses: openctemio/ci@v0.3.0
 #       with:
 #         capabilities: sast,sca,secrets
 #         api-url: https://openctem.example.com

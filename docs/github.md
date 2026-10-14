@@ -13,7 +13,7 @@ on:
 
 jobs:
   openctem:
-    uses: openctemio/ci/.github/workflows/scan.yml@v0.1.0   # a release tag, or a commit
+    uses: openctemio/ci/.github/workflows/scan.yml@v0.3.0   # a release tag, or a commit
     with:
       capabilities: sast,sca,secrets,iac
       api-url: https://openctem.example.com
@@ -22,14 +22,19 @@ jobs:
     permissions:
       contents: read
       id-token: write           # report with the job's OIDC identity
-      security-events: write    # upload-sarif only
+      security-events: write    # required, even with upload-sarif: false
 ```
 
 Every capability runs in its own job and image, in parallel, and reports
 into **one** OpenCTEM CI run; a final `gate` job asks the platform gate for
 the verdict on all of them. A capability job that fails, is cancelled or does
 not upload fails the gate. The workflow runs the action of its own commit
-(`job.workflow_sha`), so a release tag such as `@v0.1.0` is fully pinned.
+(`job.workflow_sha`), so a release tag such as `@v0.3.0` is fully pinned.
+
+The caller must grant all three permissions: GitHub checks the permissions
+of every job of a reusable workflow when it starts, so a missing
+`security-events: write` fails the run even when `upload-sarif` is false.
+Use the action below for a job without it.
 
 Pin to a full release tag (`vX.Y.Z`) or a commit. By default the images
 run with the tag of the action or workflow ref when it is a release tag,
@@ -48,7 +53,7 @@ jobs:
       - uses: actions/checkout@<sha> # pin actions by commit
         with:
           persist-credentials: false
-      - uses: openctemio/ci@v0.1.0   # a release tag, or a commit
+      - uses: openctemio/ci@v0.3.0   # a release tag, or a commit
         with:
           capabilities: sast,secrets
           api-url: https://openctem.example.com
