@@ -17,12 +17,35 @@ CI job ── checkout ──▶ openctem-ci scan --capability sast
                          │    (betterleaks git --log-opts=<base>..HEAD) when the history is there,
                          │    else a full scan
                          │ 4. convert its native output to CTIS (ctis/importer)
-                         │ 5. scope: one repository asset, repository-relative paths
+                         │ 5. scope: one repository asset, repository-relative paths;
+                         │    sast: the hash of each result's flagged lines (snippetHash/v1)
                          │ 6. redact: mask secrets everywhere, then check every output
-                         │ 7. write SARIF / GitLab report / CTIS / status file
-                         │ 8. exchange the job's OIDC token for a run token, upload
+                         │ 7. exchange the job's OIDC token for a run token, upload every result
+                         │ 8. leave out the results the platform says are already decided,
+                         │    write SARIF / GitLab report / CTIS / status file
                          └ 9. ask the platform gate for the verdict (or the local gate)
 ```
+
+### Known false positives
+
+A false positive, duplicate, accepted risk or approved exception decided in
+OpenCTEM is not shown again:
+
+- The job uploads **every** result. The upload answers with `known`, the
+  indexes of the results that already carry a decision. The job leaves those
+  out of its summary, its SARIF (code scanning alerts) and its merge request
+  report, and logs how many it left out and why. The CTIS file keeps every
+  result.
+- The platform decides, the job only displays: the gate does not count a
+  decided finding whatever the job shows, and a job that hides more than it
+  was told changes nothing in the verdict.
+- Identity: a SAST result goes up with the hash of the lines it flags, read
+  from the checked-out tree through an `os.Root` (never outside it), so the
+  platform keys it on its code, not its line. Code inserted above a false
+  positive keeps it one; editing the flagged code makes a new finding that is
+  judged again. Only the hash leaves the job.
+- Without the platform (`--no-push`, a fork, an upload failure) nothing is
+  hidden: the job cannot know.
 
 Exit codes: `0` pass (or no gate asked), `1` the gate failed, `2` the scan
 cannot be trusted (tool, parse, upload, redaction or configuration error).

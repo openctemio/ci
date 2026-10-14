@@ -26,6 +26,8 @@ type fakePlatform struct {
 	uploads   [][]byte
 	evaluates []map[string]int
 	verdict   string
+	// known is the upload response's known list (JSON), "" for none.
+	known string
 }
 
 func (f *fakePlatform) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -45,6 +47,10 @@ func (f *fakePlatform) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		f.uploads = append(f.uploads, body)
+		if f.known != "" {
+			_, _ = w.Write([]byte(`{"findings_created":1,"known":` + f.known + `}`))
+			return
+		}
 		_, _ = w.Write([]byte(`{"findings_created":1}`))
 	case strings.HasSuffix(r.URL.Path, "/evaluate"):
 		var m map[string]int
