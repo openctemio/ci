@@ -13,8 +13,13 @@ Each image is the tool plus the same `openctem-ci` binary, with
 
 ## Tags
 
-- `edge`, `sha-<commit>`: built from `main` (and rebuilt weekly for base-image fixes);
-- `vX.Y.Z`, `vX`: releases (`v0` for the 0.x releases).
+- `edge`, `sha-<commit>`: built from `main` (and rebuilt weekly for base-image
+  fixes). The binary reports `<VERSION>+<commit>`, the release named in
+  `VERSION` with the commit as build metadata; the platform compares it as
+  that release.
+- `vX.Y.Z`, `vX`: releases (`v0` for the 0.x releases). A release tag is not
+  a new build: it points at the signed `main` digests the tagged commit pins
+  (`images.lock`), whose binary reports that release.
 
 ## Releasing
 
@@ -22,13 +27,20 @@ The GitLab templates and the examples pin image digests, and a pipeline
 that includes a template from a release tag runs the digests pinned in that
 tag's commit. So the pins are refreshed before the tag, never after:
 
-1. Merge the changes for the release into `main`; wait for the image build.
-2. `scripts/pin-images.sh edge` (verifies each signature, pins the digests
-   built from that `main` commit) and set every usage reference
-   (`openctemio/ci@vX.Y.Z`, `.../ci/vX.Y.Z/gitlab/...`) to the new version;
-   `scripts/check-release-refs.sh` (CI runs it) checks they agree. Merge.
-3. Tag that commit `vX.Y.Z`. The release images carry the same binary as
-   the pinned `edge` digests (the pin commit changes only YAML and docs).
+1. Merge the changes for the release into `main`, with `VERSION` set to the
+   new `vX.Y.Z` and every usage reference (`openctemio/ci@vX.Y.Z`,
+   `.../ci/vX.Y.Z/gitlab/...`) changed to it; wait for the image build of
+   that commit.
+2. `scripts/pin-images.sh sha-<that commit>`: verifies each signature and
+   that each binary reports `vX.Y.Z`, rewrites every image reference to
+   `ghcr.io/openctemio/<image>:vX.Y.Z@sha256:<digest>` and writes
+   `images.lock`. `scripts/check-release-refs.sh` (CI runs it) checks that
+   `VERSION`, the usage references, the image tags and `images.lock` agree.
+   Merge.
+3. Tag that commit `vX.Y.Z`. The image workflow checks the references again,
+   verifies each pinned digest's signature and version, and points `vX.Y.Z`
+   and `vX` at exactly those digests: the templates, the examples and the
+   GitHub Action run one binary.
 
 Pin a digest in your pipeline (`ghcr.io/openctemio/ci-semgrep@sha256:...`).
 The GitHub Action and the reusable workflow resolve the tag to its digest,
