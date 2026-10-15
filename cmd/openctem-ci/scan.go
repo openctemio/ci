@@ -48,6 +48,7 @@ type scanFlags struct {
 	aggregate     bool
 	timeout       time.Duration
 	diff          string
+	onUploadError string
 }
 
 func cmdScan(ctx context.Context, args []string, stdout, stderr io.Writer, e env) int {
@@ -68,6 +69,7 @@ func cmdScan(ctx context.Context, args []string, stdout, stderr io.Writer, e env
 	fs.BoolVar(&f.aggregate, "aggregate", false, "report into the run shared by all capability jobs of this pipeline; a final 'gate' job decides")
 	fs.DurationVar(&f.timeout, "timeout", 30*time.Minute, "tool timeout")
 	fs.StringVar(&f.diff, "diff", nonEmptyEnv(e.getenv("OPENCTEM_DIFF"), "auto"), "on a pull or merge request: auto (sast: only findings new since the merge base; secrets: only the change's commits) or off (full scan)")
+	fs.StringVar(&f.onUploadError, "on-upload-error", e.getenv("OPENCTEM_ON_UPLOAD_ERROR"), "warn or fail when the results cannot be uploaded (default: warn with --aggregate, where the gate job uploads what is pending, else fail)")
 	if err := fs.Parse(args); err != nil {
 		return gate.ExitError
 	}
@@ -89,6 +91,17 @@ func cmdScan(ctx context.Context, args []string, stdout, stderr io.Writer, e env
 	}
 	if f.failOn != "" && !gate.ValidThreshold(f.failOn) {
 		_, _ = fmt.Fprintf(stderr, "Error: invalid --fail-on %q\n", f.failOn)
+		return gate.ExitError
+	}
+	switch f.onUploadError = strings.ToLower(strings.TrimSpace(f.onUploadError)); f.onUploadError {
+	case "":
+		f.onUploadError = "fail"
+		if f.aggregate {
+			f.onUploadError = "warn"
+		}
+	case "warn", "fail":
+	default:
+		_, _ = fmt.Fprintf(stderr, "Error: --on-upload-error must be warn or fail\n")
 		return gate.ExitError
 	}
 	s := &scanJob{f: f, c: caps[0], stdout: stdout, stderr: stderr, e: e}
@@ -204,7 +217,13 @@ func (s *scanJob) run(ctx context.Context) int {
 			}
 			s.status.Error = "upload failed"
 			s.status.OK = true
+			s.savePending(ctisJSON)
 			s.saveStatus()
+			if s.f.onUploadError == "warn" {
+				s.warnf("THE RESULTS WERE NOT UPLOADED TO OPENCTEM. The local reports are written%s; the job passes (--on-upload-error warn).",
+					pendingNote(s.status.Pending))
+				return s.localGate("")
+			}
 			return s.localGate("the upload failed")
 		}
 		s.status.Pushed = true
@@ -531,6 +550,35 @@ func (s *scanJob) fail(ctx context.Context, err error) int {
 		}
 	}
 	return gate.ExitError
+}
+
+// savePending keeps the CTIS report next to the status file, so the gate
+// job uploads it with its own token into the same run. The report already
+// passed the raw-secret check (redact.Check) and holds what the SARIF and
+// GitLab reports hold.
+func (s *scanJob) savePending(ctisJSON []byte) {
+	if s.f.statusOut == "" || !s.f.aggregate {
+		return
+	}
+	name := s.c.Name + pendingSuffix
+	dir := filepath.Dir(s.f.statusOut)
+	path := filepath.Join(dir, name)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		s.warnf("could not keep the report for the gate job: %v", err)
+		return
+	}
+	if err := os.WriteFile(path, ctisJSON, 0o644); err != nil { // #nosec G306 -- a CI artifact like the SARIF report
+		s.warnf("could not keep the report for the gate job: %v", err)
+		return
+	}
+	s.status.Pending = name
+}
+
+func pendingNote(pending string) string {
+	if pending == "" {
+		return ""
+	}
+	return " and the gate job will upload them with its own token"
 }
 
 func (s *scanJob) saveStatus() {

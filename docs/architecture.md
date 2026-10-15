@@ -101,7 +101,25 @@ minutes) bound to one run on one repository. No API key is stored in CI.
   claim) or no repository name (Bitbucket), the exchange carries the job's
   own value; the platform uses it only then and marks it.
 - GitHub and Azure mint a token on request, so a long job renews its run
-  token; elsewhere the job's single token is exchanged once.
+  token with a fresh one. Elsewhere the job holds one token: once its run
+  token nearly expires, the same token is exchanged again, which the
+  platform answers with the same run only (at most five times per token).
+- **One exchange per job.** The first `openctem-ci` step of a job stores the
+  run token in the job's temp dir (`RUNNER_TEMP` on GitHub,
+  `AGENT_TEMPDIRECTORY` on Azure, else `TMPDIR` or `/tmp`), in
+  `openctem-ci-<uid>/<hash>.json`: directory 0700, file 0600, both owned by
+  the user, never inside the job's workspace (artifacts and caches are taken
+  from there). Later steps of the same job (a scan per capability, then the
+  gate) reuse it until 30 seconds before it expires, so a job opens one run
+  however many steps it has. The name hashes the API URL, tenant, provider,
+  aggregate mode, the job id and, where the job holds one OIDC token, that
+  token's digest: another job or another token never matches. The file holds
+  the run id, run token, expiry, run details and secret hashing key, never
+  the OIDC token; anything not private to the user (symlink, other owner,
+  wider mode) is ignored. It is removed when the run gets its verdict, when
+  the platform refuses the token (the step then exchanges its own) and when
+  found expired; the runner removes the temp dir with the job.
+  `OPENCTEM_TOKEN_CACHE=off` turns it off.
 - A CI system without OIDC runs in scan-only mode: SARIF, reports and the
   local gate, no upload.
 
@@ -118,6 +136,20 @@ Scan jobs hand a status file (`<capability>.status.json`: ok, pushed, counts
 per severity, no finding text) to the gate job as a CI artifact. A
 capability that is expected but missing, failed or not uploaded counts as a
 scan failure, and any scan failure fails the gate (fail closed).
+
+A scan job whose upload fails never fails the pipeline on that alone: with
+`--aggregate`, `--on-upload-error` defaults to `warn`. The job writes its
+local reports as always, prints a loud warning, records `pushed: false` in
+its status file and keeps its CTIS report beside it
+(`<capability>.pending.ctis.json`, already checked for raw secrets, the same
+content as the SARIF report). The gate job uploads every pending report with
+its own token into the same aggregate run before it asks for the verdict;
+only a report that still cannot be uploaded counts as not uploaded. A job
+that is its own gate (no `--aggregate`) defaults to `fail`, and the gate job
+stays fail closed when it gets no verdict. The gate reads a pending report
+only under its fixed name beside its status file, as a plain file of at most
+32 MiB; the platform refuses a report about another repository, so the
+report adds nothing the scan job's own token could not upload.
 
 A platform that does not answer `aggregate: true` is refused
 (`ErrNoAggregate`): otherwise the gate job would judge an empty run and pass.

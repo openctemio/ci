@@ -46,6 +46,7 @@ the capabilities, their tools and images) and `version`.
 | `--sast-rules` | `$OPENCTEM_SAST_RULES`, else the image's OpenCTEM rules pack (`ci-opengrep`), else `p/default` | `openctem` (the signed rules pack in the image), a path in the repository, or a registry pack the engine fetches on the runner (`--semgrep-config` / `$OPENCTEM_SEMGREP_CONFIG` still work, with a deprecation warning) |
 | `--sarif`, `--gitlab-report`, `--ctis` | | write SARIF, a GitLab security report or the CTIS report to this file |
 | `--status` | | write the job status for a later `gate` job to this file |
+| `--on-upload-error` | `$OPENCTEM_ON_UPLOAD_ERROR` | `warn` or `fail` when the results cannot be uploaded; default `warn` with `--aggregate` (the job passes, keeps its report and the `gate` job uploads it), else `fail` |
 | `--fail-on` | `$OPENCTEM_FAIL_ON` | local gate threshold (`critical`, `high`, `medium`, `low`, `info`), used when the platform gate cannot decide |
 | `--no-push` | `false` | scan and write files only; do not upload |
 | `--aggregate` | `false` | report into the run shared by all capability jobs of this pipeline; a final `gate` job decides |
@@ -56,7 +57,10 @@ The `ci-opengrep` image carries the OpenCTEM rules pack ([openctemio/sast-rules]
 
 `gate` flags: `--status-dir` (default `.`), `--expect` (capabilities that
 must have reported, default `$OPENCTEM_CAPABILITIES`), `--fail-on`, and
-`--no-push` (decide locally with `--fail-on`).
+`--no-push` (decide locally with `--fail-on`). `gate` first uploads, with its
+own token, any report a scan job kept because its upload failed.
+
+Refused or failing uploads: see [troubleshooting](docs/troubleshooting.md).
 
 | Variable | Meaning |
 |---|---|
@@ -65,6 +69,7 @@ must have reported, default `$OPENCTEM_CAPABILITIES`), `--fail-on`, and
 | `OPENCTEM_OIDC_AUDIENCE` | audience, when the trust configuration does not use `openctem:tenant:<id>` |
 | `OPENCTEM_ID_TOKEN_VAR` | the variable holding the job's token on GitLab (`id_tokens`), CircleCI and Jenkins (default `OPENCTEM_ID_TOKEN`) |
 | `OPENCTEM_RETRIES` | repeats after a transient failure, 0 to 10 (default 3): a network error, 429 (honouring `Retry-After`) or 5xx on upload and verdict; the token exchange only when nothing reached the platform (no connection, 429, 503), since the job's token is single use |
+| `OPENCTEM_TOKEN_CACHE` | `off` stops the job's steps sharing one run token (default: the first step stores it, 0600, in the job's temp dir; see [architecture](docs/architecture.md)) |
 | `OPENCTEM_UPLOAD_TIMEOUT` | time limit of one results upload, 10s to 1h (default `5m`); reports of 4 KiB and more are sent gzip-compressed |
 
 Without `OPENCTEM_TENANT_ID`, or in a fork pull request, the scan runs in
