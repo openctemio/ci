@@ -65,6 +65,7 @@ must have reported, default `$OPENCTEM_CAPABILITIES`), `--fail-on`, and
 | `OPENCTEM_OIDC_AUDIENCE` | audience, when the trust configuration does not use `openctem:tenant:<id>` |
 | `OPENCTEM_ID_TOKEN_VAR` | the variable holding the job's token on GitLab (`id_tokens`), CircleCI and Jenkins (default `OPENCTEM_ID_TOKEN`) |
 | `OPENCTEM_RETRIES` | repeats after a transient failure, 0 to 10 (default 3): a network error, 429 (honouring `Retry-After`) or 5xx on upload and verdict; the token exchange only when nothing reached the platform (no connection, 429, 503), since the job's token is single use |
+| `OPENCTEM_TOKEN_CACHE` | `off` stops the job's steps sharing one run token (default: the first step stores it, 0600, in the job's temp dir; see [architecture](docs/architecture.md)) |
 | `OPENCTEM_UPLOAD_TIMEOUT` | time limit of one results upload, 10s to 1h (default `5m`); reports of 4 KiB and more are sent gzip-compressed |
 
 Without `OPENCTEM_TENANT_ID`, or in a fork pull request, the scan runs in
