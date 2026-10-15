@@ -29,8 +29,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/openctemio/ctis"
 )
 
 // Environment variables.
@@ -676,6 +674,9 @@ func (r *Run) once(ctx context.Context, timeout time.Duration, bearer, path stri
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxErrBody))
 		return resp.StatusCode, "", nil
 	}
+	if sd, ok := out.(streamDecoder); ok {
+		return resp.StatusCode, "", sd.decodeStream(io.LimitReader(resp.Body, sd.maxReplyBytes()))
+	}
 	return resp.StatusCode, "", json.NewDecoder(io.LimitReader(resp.Body, maxBody)).Decode(out)
 }
 
@@ -707,38 +708,6 @@ func (r *Run) call(ctx context.Context, kind requestKind, action string, body, o
 		err = r.do(ctx, kind, tok, path, body, out)
 	}
 	return err
-}
-
-// UploadResult counts what the platform stored from a report.
-type UploadResult struct {
-	FindingsCreated int `json:"findings_created"`
-	FindingsUpdated int `json:"findings_updated"`
-	AssetsCreated   int `json:"assets_created"`
-	AssetsUpdated   int `json:"assets_updated"`
-	// Known are the results of the uploaded report that already carry a
-	// decision on OpenCTEM (false positive, duplicate, accepted risk, an
-	// approved exception), by their index in the report. The gate does not
-	// count them; the job leaves them out of its own output.
-	Known []Known `json:"known"`
-}
-
-// Known is one uploaded result OpenCTEM has already decided.
-type Known struct {
-	Index     int    `json:"index"`
-	Decision  string `json:"decision"`
-	FindingID string `json:"finding_id"`
-}
-
-// Upload sends a report to the run.
-func (r *Run) Upload(ctx context.Context, report *ctis.Report) (*UploadResult, error) {
-	if report == nil {
-		return &UploadResult{}, nil
-	}
-	var out UploadResult
-	if err := r.call(ctx, kindUpload, "results", map[string]any{"report": report}, &out); err != nil {
-		return nil, fmt.Errorf("upload results: %w", err)
-	}
-	return &out, nil
 }
 
 // Reason is one line of a verdict.
