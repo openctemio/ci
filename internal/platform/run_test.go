@@ -217,7 +217,7 @@ func TestRedirectNotFollowed(t *testing.T) {
 	}
 }
 
-// A GitLab ID token is good for one exchange.
+// A GitLab job holds one ID token: one exchange while the run token lasts.
 func TestGitLabSingleExchange(t *testing.T) {
 	f := &fakePlatform{}
 	srv := httptest.NewServer(f.handler(t))
@@ -239,8 +239,10 @@ func TestGitLabSingleExchange(t *testing.T) {
 	r.mu.Lock()
 	r.expiresAt = time.Now().Add(-time.Second)
 	r.mu.Unlock()
-	if _, err := r.Evaluate(context.Background(), 0); err == nil {
-		t.Fatal("an expired GitLab run token was renewed with a used ID token")
+	// Expired: the same ID token again, naming the run it already holds.
+	if _, err := r.Evaluate(context.Background(), 0); err != nil || len(f.exchanges) != 2 ||
+		f.exchanges[1]["id_token"] != "gl-jwt" || f.exchanges[1]["run_id"] != "run-1" {
+		t.Fatalf("renewal: %v %+v", err, f.exchanges)
 	}
 }
 

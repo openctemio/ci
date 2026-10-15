@@ -10,6 +10,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/openctemio/ctis"
+
 	"github.com/openctemio/ci/internal/capability"
 	"github.com/openctemio/ci/internal/ciinfo"
 	"github.com/openctemio/ci/internal/gate"
@@ -66,6 +68,24 @@ func cmdGate(ctx context.Context, args []string, stdout, stderr io.Writer, e env
 			}
 		} else if !errors.Is(err, platform.ErrNoOIDC) {
 			_, _ = fmt.Fprintf(stderr, "Warning: reporting to OpenCTEM is not available: %v\n", err)
+		}
+	}
+
+	// Catch up: upload, with this job's own token into the same run, every
+	// report a scan job kept because its own upload failed.
+	if pr != nil {
+		for name, st := range statuses {
+			if !st.OK || st.Pushed || st.Pending == "" || !contains(caps, name) {
+				continue
+			}
+			if err := uploadPending(ctx, pr, st); err != nil {
+				_, _ = fmt.Fprintf(stderr, "Warning: the %s results kept by their job could not be uploaded: %s\n",
+					platform.Sanitize(name), platform.Sanitize(err.Error()))
+				continue
+			}
+			st.Pushed = true
+			statuses[name] = st
+			_, _ = fmt.Fprintf(stdout, "Uploaded the %s results its job could not upload.\n", platform.Sanitize(name))
 		}
 	}
 
@@ -172,4 +192,18 @@ func cmdCapabilities(args []string, stdout, stderr io.Writer) int {
 	}
 	_ = tw.Flush()
 	return 0
+}
+
+// uploadPending uploads a report a scan job kept for the gate.
+func uploadPending(ctx context.Context, pr *platform.Run, st status) error {
+	b, err := readPending(st)
+	if err != nil {
+		return err
+	}
+	var report ctis.Report
+	if err := json.Unmarshal(b, &report); err != nil {
+		return fmt.Errorf("not a CTIS report: %w", err)
+	}
+	_, err = pr.Upload(ctx, &report)
+	return err
 }
