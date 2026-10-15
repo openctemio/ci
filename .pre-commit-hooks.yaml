@@ -7,13 +7,13 @@
   name: OpenCTEM secrets
   description: Refuse a commit that adds a secret (betterleaks, built-in rules; repository ignore files are not read).
   language: docker_image
-  entry: --entrypoint env ghcr.io/openctemio/ci-betterleaks:v0.3.0 HOME=/tmp openctem-ci scan --capability secrets --no-push --fail-on low
+  entry: --entrypoint env ghcr.io/openctemio/ci-betterleaks:v0.3.1 HOME=/tmp openctem-ci scan --capability secrets --no-push --fail-on low
   pass_filenames: false
   always_run: true
 - id: openctem-sast
   name: OpenCTEM static analysis
   description: Refuse a commit with a high or critical static analysis finding (semgrep).
   language: docker_image
-  entry: --entrypoint env ghcr.io/openctemio/ci-semgrep:v0.3.0 HOME=/tmp openctem-ci scan --capability sast --no-push --fail-on high
+  entry: --entrypoint env ghcr.io/openctemio/ci-semgrep:v0.3.1 HOME=/tmp openctem-ci scan --capability sast --no-push --fail-on high
   pass_filenames: false
   always_run: true

@@ -1,7 +1,7 @@
 # OpenCTEM CI for GitLab: static analysis (semgrep), capability sast.
 #
 #   include:
-#     - remote: https://raw.githubusercontent.com/openctemio/ci/v0.3.0/gitlab/templates/sast.yml
+#     - remote: https://raw.githubusercontent.com/openctemio/ci/v0.3.1/gitlab/templates/sast.yml
 #   variables:
 #     OPENCTEM_API_URL: https://openctem.example.com
 #     OPENCTEM_TENANT_ID: <organization id>

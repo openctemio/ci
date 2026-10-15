@@ -1,7 +1,7 @@
 # OpenCTEM CI for GitLab: a container image (trivy), capability container; set OPENCTEM_SCAN_IMAGE.
 #
 #   include:
-#     - remote: https://raw.githubusercontent.com/openctemio/ci/v0.3.0/gitlab/templates/container.yml
+#     - remote: https://raw.githubusercontent.com/openctemio/ci/v0.3.1/gitlab/templates/container.yml
 #   variables:
 #     OPENCTEM_API_URL: https://openctem.example.com
 #     OPENCTEM_TENANT_ID: <organization id>
