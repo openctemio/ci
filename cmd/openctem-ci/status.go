@@ -24,6 +24,36 @@ type status struct {
 	Pushed     bool       `json:"pushed"`
 	Error      string     `json:"error,omitempty"`
 	Tally      gate.Tally `json:"tally"`
+	// Pending names the CTIS report, beside the status file, that the job
+	// could not upload; the gate job uploads it into the same run.
+	Pending string `json:"pending,omitempty"`
+	// dir is where the status file was read from (not serialized).
+	dir string
+}
+
+// pendingSuffix ends the name of a report a scan job could not upload.
+const pendingSuffix = ".pending.ctis.json"
+
+// maxPendingSize bounds a pending report the gate job reads.
+const maxPendingSize = 32 << 20
+
+var pendingNameRe = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}\.pending\.ctis\.json$`)
+
+// readPending reads the report a status names as pending: a plain file
+// beside the status file, under its fixed name pattern and size cap.
+func readPending(st status) ([]byte, error) {
+	if !pendingNameRe.MatchString(st.Pending) || st.Pending != st.Capability+pendingSuffix {
+		return nil, errors.New("the pending report has an unexpected name")
+	}
+	path := filepath.Join(st.dir, st.Pending)
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() || fi.Size() > maxPendingSize {
+		return nil, errors.New("the pending report is not a plain file within the size limit")
+	}
+	return os.ReadFile(path) // #nosec G304 -- fixed name beside a status file the pipeline handed over
 }
 
 // statusSuffix ends every status file name.
@@ -72,6 +102,7 @@ func readStatuses(dir string) (map[string]status, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", f, err)
 		}
+		s.dir = filepath.Dir(f)
 		if _, dup := out[s.Capability]; dup {
 			return nil, fmt.Errorf("two status files for capability %q", s.Capability)
 		}

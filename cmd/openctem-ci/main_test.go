@@ -28,6 +28,8 @@ type fakePlatform struct {
 	verdict   string
 	// known is the upload response's known list (JSON), "" for none.
 	known string
+	// rejectUploads answers every upload 400 (a failed upload).
+	rejectUploads bool
 }
 
 func (f *fakePlatform) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -45,6 +47,11 @@ func (f *fakePlatform) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasSuffix(r.URL.Path, "/results"):
 		if r.Header.Get("Authorization") != "Bearer octci_test" {
 			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if f.rejectUploads {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"code":"BAD_REQUEST","message":"rejected"}`))
 			return
 		}
 		f.uploads = append(f.uploads, body)
@@ -370,5 +377,69 @@ func TestImageDigest(t *testing.T) {
 		if got := ImageDigest(bad); got != "" {
 			t.Fatalf("%q gave %q", bad, got)
 		}
+	}
+}
+
+// A scan job of an aggregate pipeline whose upload fails passes with a loud
+// warning and keeps its report; the gate job uploads it with its own token
+// into the same run, so one flaky upload loses nothing.
+func TestUploadFailureWarnsAndGateCatchesUp(t *testing.T) {
+	h := setup(t)
+	st := filepath.Join(h.out, "statuses")
+	statusPath := filepath.Join(st, "secrets", "secrets.status.json")
+	h.p.rejectUploads = true
+	code, stdout, stderr := h.run("scan", "--capability", "secrets", "--aggregate", "--status", statusPath)
+	if code != 0 || !strings.Contains(stderr, "NOT UPLOADED") {
+		t.Fatalf("aggregate scan with a failed upload: exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	stb, _ := os.ReadFile(statusPath)
+	if !strings.Contains(string(stb), `"pushed": false`) || !strings.Contains(string(stb), `"pending": "secrets.pending.ctis.json"`) {
+		t.Fatalf("status: %s", stb)
+	}
+	pending, err := os.ReadFile(filepath.Join(st, "secrets", "secrets.pending.ctis.json"))
+	if err != nil || strings.Contains(string(pending), rawSecret) {
+		t.Fatalf("pending report: %v (must exist and hold no raw secret)", err)
+	}
+	// The job that is its own gate fails closed by default, and so does an
+	// aggregate job told to.
+	if code, _, _ := h.run("scan", "--capability", "secrets"); code != 2 {
+		t.Fatalf("standalone scan with a failed upload: exit %d, want 2", code)
+	}
+	if code, _, _ := h.run("scan", "--capability", "secrets", "--aggregate", "--on-upload-error", "fail"); code != 2 {
+		t.Fatalf("--on-upload-error fail: exit %d, want 2", code)
+	}
+	if code, _, _ := h.run("scan", "--capability", "secrets", "--on-upload-error", "maybe"); code != 2 {
+		t.Fatal("an invalid --on-upload-error was accepted")
+	}
+
+	h.p.rejectUploads = false
+	h.p.verdict = "pass"
+	code, stdout, stderr = h.run("gate", "--status-dir", st, "--expect", "secrets")
+	if code != 0 || !strings.Contains(stdout, "Uploaded the secrets results") {
+		t.Fatalf("gate: exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	if len(h.p.uploads) != 1 || len(h.p.evaluates) != 1 || h.p.evaluates[0]["scan_failures"] != 0 {
+		t.Fatalf("uploads %d evaluates %v", len(h.p.uploads), h.p.evaluates)
+	}
+}
+
+// A pending report under another name, or a link, is not uploaded.
+func TestGateRefusesOddPendingFiles(t *testing.T) {
+	dir := t.TempDir()
+	for _, st := range []status{
+		{Capability: "secrets", Pending: "../x.pending.ctis.json", dir: dir},
+		{Capability: "secrets", Pending: "sast.pending.ctis.json", dir: dir},
+	} {
+		if _, err := readPending(st); err == nil {
+			t.Fatalf("pending %q accepted", st.Pending)
+		}
+	}
+	target := filepath.Join(t.TempDir(), "other.json")
+	_ = os.WriteFile(target, []byte("{}"), 0o600)
+	if err := os.Symlink(target, filepath.Join(dir, "secrets.pending.ctis.json")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readPending(status{Capability: "secrets", Pending: "secrets.pending.ctis.json", dir: dir}); err == nil {
+		t.Fatal("a symlinked pending report was read")
 	}
 }
