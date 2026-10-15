@@ -33,6 +33,8 @@ for name in ci ci-opengrep ci-semgrep ci-trivy ci-betterleaks; do
   # main build of the release commit): the platform reads the version from
   # the runner and refuses releases below its minimum.
   got="$(docker run --rm --pull always --entrypoint openctem-ci "ghcr.io/openctemio/${name}@${digest}" version | awk '{print $2}')"
+  # One image at a time on disk (the bundle and semgrep images are large).
+  docker image rm "ghcr.io/openctemio/${name}@${digest}" >/dev/null 2>&1 || true
   [[ "$got" == "$version" || "$got" == "${version}+"* ]] || {
     echo "${ref} reports ${got}, not ${version}: bump VERSION and build first" >&2
     exit 1
