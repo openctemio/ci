@@ -132,8 +132,11 @@ func TestSingleTokenProviders(t *testing.T) {
 			r.mu.Lock()
 			r.expiresAt = time.Now().Add(-time.Second)
 			r.mu.Unlock()
-			if _, err := r.Evaluate(context.Background(), 0); err == nil || len(f.exchanges) != 1 {
-				t.Fatalf("renewed with a used token: %v, %d exchanges", err, len(f.exchanges))
+			// The job's one token, exchanged again for the same run (the
+			// platform answers a re-exchange with that run only).
+			if _, err := r.Evaluate(context.Background(), 0); err != nil || len(f.exchanges) != 2 ||
+				f.exchanges[1]["id_token"] != tc.token || f.exchanges[1]["run_id"] != "run-1" {
+				t.Fatalf("renewal: %v, %+v", err, f.exchanges)
 			}
 		})
 	}
