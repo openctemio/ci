@@ -26,12 +26,18 @@ type leak struct {
 	Secret    string `json:"Secret"`
 }
 
+// Applies reports whether the tool's output carries raw secrets to hash: only
+// then does the job need the key (and so the run) before its upload.
+func Applies(format importer.Format) bool {
+	return format == importer.FormatBetterleaks || format == importer.FormatGitleaks
+}
+
 // Apply hashes, with key, the raw secret behind each secret finding of r:
 // the leak of the scanner output with the same rule and line, in order (the
 // importer keeps the scanner's order). It returns how many findings it
 // hashed; without a key, or for another format, none.
 func Apply(r *ctis.Report, format importer.Format, output []byte, key []byte) int {
-	if r == nil || len(key) == 0 || (format != importer.FormatBetterleaks && format != importer.FormatGitleaks) {
+	if r == nil || len(key) == 0 || !Applies(format) {
 		return 0
 	}
 	var leaks []leak
