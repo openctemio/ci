@@ -1,7 +1,7 @@
 # OpenCTEM CI for GitLab: sast, sca, secrets and iac in parallel, reported into one OpenCTEM run with one gate.
 #
 #   include:
-#     - remote: https://raw.githubusercontent.com/openctemio/ci/v0.3.0/gitlab/templates/all.yml
+#     - remote: https://raw.githubusercontent.com/openctemio/ci/v0.3.1/gitlab/templates/all.yml
 #   variables:
 #     OPENCTEM_API_URL: https://openctem.example.com
 #     OPENCTEM_TENANT_ID: <organization id>
