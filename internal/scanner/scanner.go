@@ -141,6 +141,15 @@ func Run(ctx context.Context, c capability.Capability, opts Options) (*Result, e
 	defer cancel()
 
 	env := FilterEnv(opts.Environ())
+	if c.Tool == "trivy" {
+		runDir := opts.Target
+		if runDir == "" {
+			runDir, _ = os.Getwd()
+		}
+		if err := checkTrivyCache(env, runDir, opts.Target, opts.Root); err != nil {
+			return nil, err
+		}
+	}
 	bin, err := lookPath(argv[0], env)
 	if err != nil {
 		return nil, err

@@ -68,13 +68,9 @@ openctem-sca:
   id_tokens:
     OPENCTEM_ID_TOKEN:
       aud: openctem:tenant:$OPENCTEM_TENANT_ID
-  variables:
-    TRIVY_CACHE_DIR: $CI_PROJECT_DIR/.openctem-trivy-cache
-    TRIVY_SKIP_DIRS: .openctem-trivy-cache
-  cache:
-    key: openctem-trivy-db
-    paths:
-      - .openctem-trivy-cache/
+  # trivy keeps its database in the image's cache directory, outside the
+  # checkout: a cache directory in the tree could be committed by the change
+  # under review and trusted as the database (openctem-ci refuses one).
   script:
     - >-
       openctem-ci scan --capability sca --aggregate
@@ -141,13 +137,9 @@ openctem-iac:
   id_tokens:
     OPENCTEM_ID_TOKEN:
       aud: openctem:tenant:$OPENCTEM_TENANT_ID
-  variables:
-    TRIVY_CACHE_DIR: $CI_PROJECT_DIR/.openctem-trivy-cache
-    TRIVY_SKIP_DIRS: .openctem-trivy-cache
-  cache:
-    key: openctem-trivy-db
-    paths:
-      - .openctem-trivy-cache/
+  # trivy keeps its database in the image's cache directory, outside the
+  # checkout: a cache directory in the tree could be committed by the change
+  # under review and trusted as the database (openctem-ci refuses one).
   script:
     - >-
       openctem-ci scan --capability iac --aggregate
