@@ -71,7 +71,7 @@ Refused or failing uploads: see [troubleshooting](docs/troubleshooting.md).
 | `OPENCTEM_RETRIES` | repeats after a transient failure, 0 to 10 (default 3): a network error, 429 (honouring `Retry-After`) or 5xx on upload and verdict; the token exchange only when nothing reached the platform (no connection, 429, 503), since the job's token is single use |
 | `OPENCTEM_TOKEN_CACHE` | `off` stops the job's steps sharing one run token (default: the first step stores it, 0600, in the job's temp dir; see [architecture](docs/architecture.md)) |
 | `OPENCTEM_ENFORCE` | `false` lets a job that sets `OPENCTEM_TENANT_ID` but cannot report (no OIDC token, no API URL) run as a scan only, with a warning; by default such a job fails with exit 2 and the fix |
-| `OPENCTEM_UPLOAD_TIMEOUT` | time limit of one results upload, 10s to 1h (default `5m`); reports of 4 KiB and more are sent gzip-compressed |
+| `OPENCTEM_UPLOAD_TIMEOUT` | time limit of one results upload, 10s to 1h (default `5m`); reports of 4 KiB and more are sent gzip-compressed, and a report over 24 MiB or 10 000 findings goes up in parts ([architecture](docs/architecture.md#large-reports)) |
 
 Without `OPENCTEM_TENANT_ID`, or in a fork pull request, the scan runs in
 scan-only mode: files and the local gate (`--fail-on`), no upload. A job that
