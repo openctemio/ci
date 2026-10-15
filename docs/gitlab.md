@@ -69,8 +69,21 @@ scans in full.
 
 ## Cache
 
-The trivy jobs cache the vulnerability database in `.openctem-trivy-cache/`
-(`cache:key: openctem-trivy-db`), excluded from the scan.
+trivy keeps its vulnerability database in the image's cache directory
+(`/home/openctem/.cache/trivy`), outside the checkout, and downloads it in
+each job. The templates do not use a GitLab `cache:` for it: GitLab caches
+only paths inside the project directory, and a cache directory in the tree
+can be committed by the change under review. A committed directory holding a
+database whose metadata says "fresh" would be trusted by trivy and decide
+what sca, iac and container scans find. `openctem-ci` refuses to run trivy
+with a cache directory (`TRIVY_CACHE_DIR`, else `$XDG_CACHE_HOME/trivy`, else
+`$HOME/.cache/trivy`) inside the checkout, and the scan fails with exit 2.
+
+To keep the database between jobs on a self-hosted runner, mount a runner
+volume outside the builds directory (for example `volumes = ["/cache"]` in
+the runner's `config.toml`) and set `TRIVY_CACHE_DIR: /cache/trivy` on the
+trivy jobs. A pipeline copied from an earlier template that sets
+`TRIVY_CACHE_DIR: $CI_PROJECT_DIR/.openctem-trivy-cache` must drop it.
 
 ## Rollout
 

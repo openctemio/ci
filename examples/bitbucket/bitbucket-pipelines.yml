@@ -29,7 +29,10 @@ definitions:
     artifacts:
       - openctem-out/**
   caches:
-    trivy: .openctem-trivy-cache
+    # Outside the clone: a cache directory in the tree could be committed by
+    # the change under review and trusted as trivy's database. This is the
+    # image's TRIVY_CACHE_DIR.
+    trivy: /home/openctem/.cache/trivy
 
 pipelines:
   default: &openctem
@@ -44,7 +47,6 @@ pipelines:
             name: OpenCTEM sca
             caches: [trivy]
             script:
-              - export TRIVY_CACHE_DIR="$BITBUCKET_CLONE_DIR/.openctem-trivy-cache" TRIVY_SKIP_DIRS=.openctem-trivy-cache
               - openctem-ci scan --capability sca --aggregate --sarif openctem-out/sca.sarif --status openctem-out/sca.status.json
         - step:
             <<: *scan
@@ -56,7 +58,6 @@ pipelines:
             name: OpenCTEM iac
             caches: [trivy]
             script:
-              - export TRIVY_CACHE_DIR="$BITBUCKET_CLONE_DIR/.openctem-trivy-cache" TRIVY_SKIP_DIRS=.openctem-trivy-cache
               - openctem-ci scan --capability iac --aggregate --sarif openctem-out/iac.sarif --status openctem-out/iac.status.json
     - step:
         name: OpenCTEM gate
