@@ -255,6 +255,10 @@ type Run struct {
 	// usedToken: the job's single token (every provider but GitHub and
 	// Azure) was exchanged.
 	usedToken bool
+	// exchangeErr is why the exchange of that single token failed: every
+	// later call reports it, instead of a bare "already exchanged" that
+	// hides the cause (SecretKey has no error to return).
+	exchangeErr error
 	// repoPolicy is the gate part of the repository's .openctem.yml.
 	repoPolicy json.RawMessage
 	// secretKey hashes the raw secrets the job finds (from the exchange).
@@ -357,10 +361,22 @@ func (r *Run) bearer(ctx context.Context) (string, error) {
 		}
 		return "", fmt.Errorf("the CI run token expired and %s offers no second OIDC token to this job", r.provider)
 	}
+	if r.exchangeErr != nil {
+		return "", r.exchangeErr
+	}
 	idToken, err := r.idToken(ctx)
 	if err != nil {
 		return "", err
 	}
+	token, err := r.exchange(ctx, idToken)
+	if err != nil && r.usedToken {
+		r.exchangeErr = err
+	}
+	return token, err
+}
+
+// exchange trades the job's OIDC token for a run token. r.mu is held.
+func (r *Run) exchange(ctx context.Context, idToken string) (string, error) {
 	body := map[string]any{"tenant_id": r.cfg.TenantID, "id_token": idToken}
 	for k, v := range r.hints() {
 		if v = strings.TrimSpace(v); v != "" {
