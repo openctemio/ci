@@ -34,8 +34,9 @@ type status struct {
 // pendingSuffix ends the name of a report a scan job could not upload.
 const pendingSuffix = ".pending.ctis.json"
 
-// maxPendingSize bounds a pending report the gate job reads.
-const maxPendingSize = 32 << 20
+// maxPendingSize bounds a pending report the gate job reads. Upload sends
+// a large report in parts, so this is not the platform's request limit.
+const maxPendingSize = 256 << 20
 
 var pendingNameRe = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}\.pending\.ctis\.json$`)
 

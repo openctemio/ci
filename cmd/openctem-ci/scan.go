@@ -232,6 +232,13 @@ func (s *scanJob) run(ctx context.Context) int {
 		info := s.pr.Info()
 		s.logf("Uploaded to OpenCTEM run %s (%s @ %s): %d finding(s) new, %d updated",
 			info.RunID, platform.Sanitize(info.Repository), short(info.CommitSHA), up.FindingsCreated, up.FindingsUpdated)
+		if up.Parts > 1 {
+			s.logf("[%s] the report was large and went up in %d parts", s.c.Name, up.Parts)
+		}
+		if up.KnownIncomplete {
+			s.warnf("OpenCTEM stored the report, but its full list of already-decided results could not be read; " +
+				"this output may still show some of them (the platform's verdict is not affected)")
+		}
 		var hidden map[string]int
 		shown, hidden = withoutKnown(report, up.Known)
 		if n := len(report.Findings) - len(shown.Findings); n > 0 {

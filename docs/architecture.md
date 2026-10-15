@@ -55,6 +55,34 @@ OpenCTEM is not shown again:
   carry none. The image smoke test scans the fixture with
   `testdata/rules/taint.yaml` and requires a data flow on both of its flows.
 
+### Large reports
+
+- **A 2xx reply means stored.** The upload reply is read as a stream, up to
+  8 MiB plus 1 KiB per finding of the request (at most 256 MiB). The counts
+  and the decided results are kept one at a time; an index outside the
+  request, or a repeated one, is dropped. A reply that is cut off, too long
+  or not JSON leaves only the list of decided results incomplete (the job
+  says so and shows those results). It never turns a stored report into a
+  failed upload.
+- **Paged decided results.** A platform that caps `known` may add
+  `known_next` (an opaque cursor of at most 1 KiB). The job then asks
+  `POST /api/v1/ci/runs/{id}/known` with `{"cursor": "<known_next>"}`, which
+  answers `{"known": [...], "next": "<cursor or empty>"}` (indexes relative to
+  the same request), for at most 1000 pages. `known_truncated: true` without
+  a cursor, an error, or a platform without that endpoint leaves the list
+  incomplete.
+- **Parts.** A report over 24 MiB of JSON or 10 000 findings goes up in
+  parts. Each part is a complete report with the metadata, tool and assets,
+  and a share of the findings. The first part also carries the
+  dependencies, relationships and endpoints. Findings are keyed by
+  fingerprint, so the parts add up to the report on any platform version.
+  Each request is gzip-compressed (the platform takes 50 MB decompressed). A
+  part refused with 413 is sent again in halves. One report becomes at most
+  64 requests; a run takes 200 reports.
+- A failed part fails the upload. In aggregate mode the gate job uploads the
+  whole report again from the job's artifact (repeating stored parts is
+  harmless).
+
 Exit codes: `0` pass (or no gate asked), `1` the gate failed, `2` the scan
 cannot be trusted (tool, parse, upload, redaction or configuration error).
 A broken scan never exits 0.
