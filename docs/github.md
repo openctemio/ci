@@ -82,7 +82,7 @@ Inputs of both the action and the reusable workflow:
 | `target` | `.` | directory to scan, inside the checkout |
 | `image` | | image to scan (`container`) |
 | `fail-on` | | local gate threshold when the platform gate cannot decide |
-| `enforce` | `true` | `false`: a failing gate does not fail the job (a scan error still does) |
+| `enforce` | `true` | `false`: a failing gate does not fail the job (a scan error still does), and a job with `tenant-id` but no OIDC token runs as a scan only instead of failing |
 | `upload-sarif` | `false` | upload SARIF to GitHub code scanning (`security-events: write`) |
 | `image-tag` | the action or workflow version, else `edge` | image tag |
 | `scanner-image` | | run this image for every capability instead of the per-tool images (testing a build) |

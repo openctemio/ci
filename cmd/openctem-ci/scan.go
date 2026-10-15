@@ -149,7 +149,9 @@ func (s *scanJob) run(ctx context.Context) int {
 			return s.fail(ctx, err)
 		}
 	}
-	s.openRun()
+	if err := s.openRun(); err != nil {
+		return s.fail(ctx, err)
+	}
 	if s.pr != nil {
 		raw, name, err := repopolicy.Load(s.info.Workspace)
 		if err != nil {
@@ -258,17 +260,20 @@ func (s *scanJob) run(ctx context.Context) int {
 }
 
 // openRun decides whether the results go to the platform: only with an
-// OIDC identity, never from a fork and never when --no-push is set.
-func (s *scanJob) openRun() {
+// OIDC identity, never from a fork and never when --no-push is set. A job
+// that names a tenant but cannot report fails closed (an error), unless
+// OPENCTEM_ENFORCE=false: a forgotten id-token permission must not turn into
+// a green pipeline that reported nothing.
+func (s *scanJob) openRun() error {
 	if s.f.noPush {
-		return
+		return nil
 	}
 	tenant := strings.TrimSpace(s.e.getenv(platform.EnvTenantID))
 	if s.info.Fork {
 		if tenant != "" {
 			s.warnf("this change comes from a fork: results are not uploaded and no credential is used (scan only)")
 		}
-		return
+		return nil
 	}
 	if s.info.PullRequestTarget {
 		s.warnf("pull_request_target runs with the base repository's credentials; prefer pull_request")
@@ -278,20 +283,18 @@ func (s *scanJob) openRun() {
 	cfg.UserAgent = "openctem-ci/" + Version
 	pr, err := platform.New(cfg)
 	if err != nil {
-		if tenant != "" {
-			if errors.Is(err, platform.ErrNoOIDC) {
-				s.warnf("%s is set but this job has no OIDC token (GitHub Actions: grant 'permissions: id-token: write'; "+
-					"GitLab CI: define 'id_tokens: %[2]s' with the trust configuration's audience; Azure Pipelines: map "+
-					"SYSTEM_ACCESSTOKEN: $(System.AccessToken); Bitbucket: 'oidc: true' on the step; CircleCI, Jenkins: "+
-					"put the job's token in %[2]s, see docs/other-ci.md); scan only",
-					platform.EnvTenantID, nonEmpty(cfg.IDTokenVar, platform.DefaultIDTokenVar))
-			} else {
-				s.warnf("reporting to OpenCTEM is not available: %v; scan only", err)
-			}
+		if tenant == "" {
+			return nil // local use: no tenant, nothing to report
 		}
-		return
+		rerr := reportingError(err, nonEmpty(cfg.IDTokenVar, platform.DefaultIDTokenVar))
+		if enforced(s.e.getenv) {
+			return rerr
+		}
+		s.warnf("%s; scan only (%s=false)", platform.Sanitize(rerr.Error()), envEnforce)
+		return nil
 	}
 	s.pr = pr
+	return nil
 }
 
 func (s *scanJob) convert(ctx context.Context, res *scanner.Result, known []string, targetAbs, targetRel string) (*ctis.Report, error) {
@@ -542,6 +545,10 @@ func (s *scanJob) fail(ctx context.Context, err error) int {
 	s.status.Error = truncate(platform.Sanitize(err.Error()), 300)
 	if errors.Is(err, redact.ErrSecretInOutput) {
 		s.status.Error = "secret redaction check failed"
+	}
+	var cre *cannotReportError
+	if errors.As(err, &cre) {
+		s.status.Error = cre.short
 	}
 	s.saveStatus()
 	if s.pr != nil && !s.f.aggregate {
