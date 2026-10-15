@@ -46,6 +46,7 @@ the capabilities, their tools and images) and `version`.
 | `--sast-rules` | `$OPENCTEM_SAST_RULES`, else the image's OpenCTEM rules pack (`ci-opengrep`), else `p/default` | `openctem` (the signed rules pack in the image), a path in the repository, or a registry pack the engine fetches on the runner (`--semgrep-config` / `$OPENCTEM_SEMGREP_CONFIG` still work, with a deprecation warning) |
 | `--sarif`, `--gitlab-report`, `--ctis` | | write SARIF, a GitLab security report or the CTIS report to this file |
 | `--status` | | write the job status for a later `gate` job to this file |
+| `--on-upload-error` | `$OPENCTEM_ON_UPLOAD_ERROR` | `warn` or `fail` when the results cannot be uploaded; default `warn` with `--aggregate` (the job passes, keeps its report and the `gate` job uploads it), else `fail` |
 | `--fail-on` | `$OPENCTEM_FAIL_ON` | local gate threshold (`critical`, `high`, `medium`, `low`, `info`), used when the platform gate cannot decide |
 | `--no-push` | `false` | scan and write files only; do not upload |
 | `--aggregate` | `false` | report into the run shared by all capability jobs of this pipeline; a final `gate` job decides |
@@ -56,7 +57,10 @@ The `ci-opengrep` image carries the OpenCTEM rules pack ([openctemio/sast-rules]
 
 `gate` flags: `--status-dir` (default `.`), `--expect` (capabilities that
 must have reported, default `$OPENCTEM_CAPABILITIES`), `--fail-on`, and
-`--no-push` (decide locally with `--fail-on`).
+`--no-push` (decide locally with `--fail-on`). `gate` first uploads, with its
+own token, any report a scan job kept because its upload failed.
+
+Refused or failing uploads: see [troubleshooting](docs/troubleshooting.md).
 
 | Variable | Meaning |
 |---|---|
