@@ -27,6 +27,16 @@ type status struct {
 	// Pending names the CTIS report, beside the status file, that the job
 	// could not upload; the gate job uploads it into the same run.
 	Pending string `json:"pending,omitempty"`
+	// Upload says whether the results reached OpenCTEM: "uploaded",
+	// "not_uploaded" (it should have, and UploadReason says why not) or
+	// "skipped" (the job does not report, and UploadReason says why).
+	Upload       string `json:"upload,omitempty"`
+	UploadReason string `json:"upload_reason,omitempty"`
+	// ErrorClass is the kind of failure of a scan that is not OK.
+	ErrorClass string `json:"error_class,omitempty"`
+	// Partial: the tool failed, and what it found before failing was
+	// uploaded marked partial. The capability still counts as failed.
+	Partial bool `json:"partial,omitempty"`
 	// dir is where the status file was read from (not serialized).
 	dir string
 }
@@ -138,6 +148,9 @@ func readStatus(path string) (status, error) {
 	s.Capability = strings.ToLower(strings.TrimSpace(s.Capability))
 	if !capNameRe.MatchString(s.Capability) {
 		return s, errors.New("status file names no valid capability")
+	}
+	if !validUploadState(s.Upload) || !classRe.MatchString(s.UploadReason) || !classRe.MatchString(s.ErrorClass) {
+		return s, errors.New("status file has an invalid upload state")
 	}
 	for k, v := range s.Tally.Severity {
 		if v < 0 || len(k) > 16 {

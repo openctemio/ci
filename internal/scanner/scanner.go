@@ -71,7 +71,14 @@ type Result struct {
 	Format importer.Format
 	// Duration of the tool run.
 	Duration time.Duration
+	// Partial: the tool failed (Run also returns its error), but it had
+	// written a report. The results in it are what the tool found before it
+	// failed, never a complete scan.
+	Partial bool
 }
+
+// ErrTimeout: the tool did not finish within its time limit.
+var ErrTimeout = errors.New("the tool did not finish in time")
 
 // PackDir is where the ci-opengrep image installs the OpenCTEM rules pack
 // (github.com/openctemio/sast-rules, a signed release verified at build).
@@ -168,11 +175,20 @@ func Run(ctx context.Context, c capability.Capability, opts Options) (*Result, e
 	cmd.Stderr = &limitWriter{w: &stderr, n: maxStderr}
 	runErr := cmd.Run()
 	dur := time.Since(start)
+	// A failed tool may still have written a report: it is returned marked
+	// partial, with the error, and the caller decides what to do with it.
+	partial := func() *Result {
+		data, err := readBounded(out)
+		if err != nil || len(bytes.TrimSpace(data)) == 0 {
+			return nil
+		}
+		return &Result{Tool: c.Tool, Version: version, Output: data, Format: format, Duration: dur, Partial: true}
+	}
 	if ctx.Err() == context.DeadlineExceeded {
-		return nil, fmt.Errorf("%s did not finish within %s", c.Tool, opts.Timeout)
+		return partial(), fmt.Errorf("%w: %s did not finish within %s", ErrTimeout, c.Tool, opts.Timeout)
 	}
 	if runErr != nil && !acceptedExit(c.Tool, runErr) {
-		return nil, fmt.Errorf("%s failed: %w: %s", c.Tool, runErr, lastLines(stderr.String(), 8))
+		return partial(), fmt.Errorf("%s failed: %w: %s", c.Tool, runErr, lastLines(stderr.String(), 8))
 	}
 	data, err := readBounded(out)
 	if err != nil {

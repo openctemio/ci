@@ -89,27 +89,38 @@ func cmdGate(ctx context.Context, args []string, stdout, stderr io.Writer, e env
 					platform.Sanitize(name), platform.Sanitize(err.Error()))
 				continue
 			}
-			st.Pushed = true
+			st.Pushed, st.Upload, st.UploadReason = true, uploadDone, ""
 			statuses[name] = st
 			_, _ = fmt.Fprintf(stdout, "Uploaded the %s results its job could not upload.\n", platform.Sanitize(name))
 		}
 	}
 
 	failures, tally := 0, gate.Tally{}
+	var states []platform.CapabilityState
 	tw := tabwriter.NewWriter(stdout, 0, 2, 2, ' ', 0)
 	_, _ = fmt.Fprintln(tw, "CAPABILITY\tTOOL\tSTATUS\tFINDINGS")
 	for _, c := range caps {
 		st, ok := statuses[c.Name]
 		state := "ok"
+		cs := st.capabilityState()
 		switch {
 		case !ok:
 			state, failures = "missing (the job did not report)", failures+1
+			cs = platform.CapabilityState{Name: c.Name, Tool: c.Tool, State: "missing"}
 		case !st.OK:
 			state, failures = "failed: "+platform.Sanitize(st.Error), failures+1
+			if st.Partial {
+				state += " (partial results uploaded)"
+			}
 		case pr != nil && !st.Pushed:
 			// The platform judges only what reached it.
-			state, failures = "not uploaded", failures+1
+			state, failures = "not uploaded"+parenthesize(st.UploadReason), failures+1
+			cs = platform.CapabilityState{Name: c.Name, Tool: st.Tool, State: uploadFailed, Reason: st.UploadReason}
 		}
+		if !capNameRe.MatchString(cs.Tool) {
+			cs.Tool = c.Tool // the status file is a job's claim: only a plain tool name goes to the platform
+		}
+		states = append(states, cs)
 		if ok {
 			tally.Add(st.Tally)
 		}
@@ -123,7 +134,7 @@ func cmdGate(ctx context.Context, args []string, stdout, stderr io.Writer, e env
 	}
 
 	if pr != nil {
-		v, err := pr.Evaluate(ctx, failures)
+		v, err := pr.Evaluate(ctx, failures, states...)
 		if err == nil {
 			platform.WriteVerdict(stdout, v)
 			if v.Failed() {

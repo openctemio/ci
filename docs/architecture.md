@@ -142,6 +142,33 @@ per severity, no finding text) to the gate job as a CI artifact. A
 capability that is expected but missing, failed or not uploaded counts as a
 scan failure, and any scan failure fails the gate (fail closed).
 
+Each status file also says whether the results reached OpenCTEM and why not,
+as fixed words (never free text):
+
+| Field | Values |
+|---|---|
+| `upload` | `uploaded`; `not_uploaded` (the job should have reported); `skipped` (the job does not report) |
+| `upload_reason` | `http_<status>`, `refused`, `timeout`, `network`, `scan_failed`, `no_oidc`, `not_configured` (not uploaded); `no_tenant`, `no_push`, `fork`, and `no_oidc` with `OPENCTEM_ENFORCE=false` (skipped) |
+| `error_class` | for a failed scan: `scan_failed`, `timeout`, `redaction_failed`, `cache_in_checkout`, `no_oidc`, `not_configured` |
+| `partial` | the tool failed after writing a report, and what it found was uploaded marked partial |
+
+The verdict request (`gate`, or a job that is its own gate) carries
+`capabilities: [{name, tool, state, reason}]` beside `scan_failures`. The
+state is `uploaded`, `partial`, `failed`, `not_uploaded` or `missing`. The run
+can show each capability with it, and `scan_failures` remains what fails the
+gate. A platform that does not read `capabilities` ignores them. The gate
+sends only a plain tool name from a status file, else the capability's
+default tool.
+
+A tool that crashes or times out is a failed capability, never a clean
+one. It uploads nothing, unless the tool had written a report. Then what it
+found goes up marked partial: `coverage_type: partial`, so the platform never
+resolves anything from it, and the metadata properties
+`openctem_scan_state: failed` and `openctem_scan_error: <class>`. Those
+results go through the same redaction and keyed-hash steps first. The job
+still exits 2, and the gate still counts the capability as failed. Partial
+results are not written to the job's SARIF or merge request report.
+
 A scan job whose upload fails never fails the pipeline on that alone: with
 `--aggregate`, `--on-upload-error` defaults to `warn`. The job writes its
 local reports as always, prints a loud warning, records `pushed: false` in

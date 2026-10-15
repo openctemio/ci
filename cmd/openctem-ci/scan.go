@@ -181,11 +181,18 @@ func (s *scanJob) run(ctx context.Context) int {
 	start := time.Now()
 	res, err := scanner.Run(ctx, s.c, scanner.Options{Target: targetAbs, Root: s.info.Workspace, Image: strings.TrimSpace(s.f.image),
 		SASTRules: rules, BaselineCommit: baseline, Timeout: s.f.timeout, Environ: s.e.environ, Stderr: s.stderr})
-	if err != nil {
+	// toolErr: the tool failed but wrote a report. What it found is kept,
+	// marked partial, and the scan still fails: a crash is never "clean".
+	toolErr := err
+	if err != nil && (res == nil || !res.Partial) {
 		return s.fail(ctx, err)
 	}
 	s.status.Version = res.Version
-	s.logf("[%s] finished in %s", s.c.Tool, res.Duration.Round(time.Millisecond))
+	if toolErr != nil {
+		s.warnf("%s failed; the results it wrote before failing are kept, marked partial, and the scan counts as failed", s.c.Tool)
+	} else {
+		s.logf("[%s] finished in %s", s.c.Tool, res.Duration.Round(time.Millisecond))
+	}
 
 	known := redact.RawSecrets(res.Format, res.Output)
 	report, err := s.convert(ctx, res, known, targetAbs, targetRel)
@@ -198,7 +205,13 @@ func (s *scanJob) run(ctx context.Context) int {
 	}
 	res.Output = nil // the raw output may hold secrets: drop it now
 	if err != nil {
+		if toolErr != nil {
+			return s.fail(ctx, toolErr) // the partial report is unreadable: the tool's error is what counts
+		}
 		return s.fail(ctx, err)
+	}
+	if toolErr != nil {
+		markPartial(report, errorClass(toolErr))
 	}
 	ctisJSON, err := json.Marshal(report)
 	if err != nil {
@@ -206,6 +219,9 @@ func (s *scanJob) run(ctx context.Context) int {
 	}
 	if err := redact.Check(ctisJSON, known); err != nil {
 		return s.fail(ctx, err)
+	}
+	if toolErr != nil {
+		return s.failPartial(ctx, report, toolErr)
 	}
 	shown := report
 	if s.pr != nil {
@@ -218,6 +234,7 @@ func (s *scanJob) run(ctx context.Context) int {
 				return s.fail(ctx, err)
 			}
 			s.status.Error = "upload failed"
+			s.status.Upload, s.status.UploadReason = uploadFailed, uploadClass(err)
 			s.status.OK = true
 			s.savePending(ctisJSON)
 			s.saveStatus()
@@ -229,6 +246,7 @@ func (s *scanJob) run(ctx context.Context) int {
 			return s.localGate("the upload failed")
 		}
 		s.status.Pushed = true
+		s.status.Upload = uploadDone
 		info := s.pr.Info()
 		s.logf("Uploaded to OpenCTEM run %s (%s @ %s): %d finding(s) new, %d updated",
 			info.RunID, platform.Sanitize(info.Repository), short(info.CommitSHA), up.FindingsCreated, up.FindingsUpdated)
@@ -266,6 +284,7 @@ func (s *scanJob) run(ctx context.Context) int {
 // a green pipeline that reported nothing.
 func (s *scanJob) openRun() error {
 	if s.f.noPush {
+		s.status.Upload, s.status.UploadReason = uploadSkipped, "no_push"
 		return nil
 	}
 	tenant := strings.TrimSpace(s.e.getenv(platform.EnvTenantID))
@@ -273,6 +292,7 @@ func (s *scanJob) openRun() error {
 		if tenant != "" {
 			s.warnf("this change comes from a fork: results are not uploaded and no credential is used (scan only)")
 		}
+		s.status.Upload, s.status.UploadReason = uploadSkipped, "fork"
 		return nil
 	}
 	if s.info.PullRequestTarget {
@@ -284,12 +304,14 @@ func (s *scanJob) openRun() error {
 	pr, err := platform.New(cfg)
 	if err != nil {
 		if tenant == "" {
+			s.status.Upload, s.status.UploadReason = uploadSkipped, "no_tenant"
 			return nil // local use: no tenant, nothing to report
 		}
 		rerr := reportingError(err, nonEmpty(cfg.IDTokenVar, platform.DefaultIDTokenVar))
 		if enforced(s.e.getenv) {
 			return rerr
 		}
+		s.status.Upload, s.status.UploadReason = uploadSkipped, errorClass(rerr)
 		s.warnf("%s; scan only (%s=false)", platform.Sanitize(rerr.Error()), envEnforce)
 		return nil
 	}
@@ -550,9 +572,18 @@ func (s *scanJob) fail(ctx context.Context, err error) int {
 	if errors.As(err, &cre) {
 		s.status.Error = cre.short
 	}
+	s.status.ErrorClass = errorClass(err)
+	if s.status.Upload == "" {
+		// Nothing went up for this capability: the scan failed before the
+		// upload, or the job cannot report.
+		s.status.Upload, s.status.UploadReason = uploadFailed, "scan_failed"
+		if cre != nil {
+			s.status.UploadReason = cre.class
+		}
+	}
 	s.saveStatus()
 	if s.pr != nil && !s.f.aggregate {
-		if v, perr := s.pr.Evaluate(ctx, 1); perr == nil {
+		if v, perr := s.pr.Evaluate(ctx, 1, s.status.capabilityState()); perr == nil {
 			platform.WriteVerdict(s.stdout, v)
 		}
 	}
@@ -600,7 +631,7 @@ func (s *scanJob) saveStatus() {
 // platformGate asks the platform for the verdict; the local gate decides
 // only when the platform cannot be reached.
 func (s *scanJob) platformGate(ctx context.Context, failures int) int {
-	v, err := s.pr.Evaluate(ctx, failures)
+	v, err := s.pr.Evaluate(ctx, failures, s.status.capabilityState())
 	if err != nil {
 		s.warnf("the OpenCTEM gate could not be reached: %v", err)
 		return s.localGate("the platform gate is unreachable")
