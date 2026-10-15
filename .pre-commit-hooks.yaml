@@ -12,8 +12,8 @@
   always_run: true
 - id: openctem-sast
   name: OpenCTEM static analysis
-  description: Refuse a commit with a high or critical static analysis finding (semgrep).
+  description: Refuse a commit with a high or critical static analysis finding (opengrep).
   language: docker_image
-  entry: --entrypoint env ghcr.io/openctemio/ci-semgrep:v0.3.1 HOME=/tmp openctem-ci scan --capability sast --no-push --fail-on high
+  entry: --entrypoint env ghcr.io/openctemio/ci-opengrep:v0.3.1 HOME=/tmp openctem-ci scan --capability sast --no-push --fail-on high
   pass_filenames: false
   always_run: true
