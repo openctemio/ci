@@ -252,13 +252,14 @@ type Run struct {
 	token     string
 	expiresAt time.Time
 	info      Info
-	// usedToken: the job's single token (every provider but GitHub and
-	// Azure) was exchanged.
-	usedToken bool
-	// exchangeErr is why the exchange of that single token failed: every
-	// later call reports it, instead of a bare "already exchanged" that
-	// hides the cause (SecretKey has no error to return).
+	// exchangeErr is why the exchange of the job's single OIDC token (every
+	// provider but GitHub and Azure) failed: every later call reports it
+	// (SecretKey has no error to return).
 	exchangeErr error
+	// cacheRead: the job's token cache was looked at; fromCache: the run
+	// token came from it.
+	cacheRead bool
+	fromCache bool
 	// repoPolicy is the gate part of the repository's .openctem.yml.
 	repoPolicy json.RawMessage
 	// secretKey hashes the raw secrets the job finds (from the exchange).
@@ -346,20 +347,24 @@ func (r *Run) String() string {
 	return fmt.Sprintf("Run{provider=%s run=%s token=[redacted]}", r.provider, r.runID)
 }
 
-// bearer returns a valid run token, exchanging or renewing as needed.
+// bearer returns a valid run token: the one this process holds, the one an
+// earlier openctem-ci step of the same job left in the job's token cache
+// (cache.go), or a new one from an exchange (renewing as needed).
 func (r *Run) bearer(ctx context.Context) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.token == "" && !r.cacheRead {
+		r.cacheRead = true
+		r.loadCache()
+	}
 	if r.token != "" && time.Until(r.expiresAt) > renewBefore {
 		return r.token, nil
 	}
-	if r.token != "" && !canMint(r.provider) {
-		// The job's token is good for one exchange: keep the run token
-		// until it expires.
-		if time.Now().Before(r.expiresAt) {
-			return r.token, nil
-		}
-		return "", fmt.Errorf("the CI run token expired and %s offers no second OIDC token to this job", r.provider)
+	if r.token != "" && !canMint(r.provider) && time.Until(r.expiresAt) > cacheMargin {
+		// The job holds one OIDC token: keep the run token until it
+		// (nearly) expires, then exchange the same OIDC token again,
+		// which the platform answers with the same run.
+		return r.token, nil
 	}
 	if r.exchangeErr != nil {
 		return "", r.exchangeErr
@@ -369,8 +374,13 @@ func (r *Run) bearer(ctx context.Context) (string, error) {
 		return "", err
 	}
 	token, err := r.exchange(ctx, idToken)
-	if err != nil && r.usedToken {
+	if err != nil && !canMint(r.provider) {
+		// The same token would be refused for the same reason: keep the
+		// cause for every later call instead of asking again.
 		r.exchangeErr = err
+	}
+	if err == nil {
+		r.saveCache()
 	}
 	return token, err
 }
@@ -457,10 +467,6 @@ func (r *Run) idToken(ctx context.Context) (string, error) {
 	case ProviderAzureDevOps:
 		return r.azureToken(ctx)
 	case ProviderGitLab, ProviderBitbucket, ProviderCircleCI, ProviderJenkins:
-		if r.usedToken {
-			return "", fmt.Errorf("the %s OIDC token was already exchanged", r.provider)
-		}
-		r.usedToken = true
 		if r.provider == ProviderBitbucket {
 			return r.cfg.Getenv("BITBUCKET_STEP_OIDC_TOKEN"), nil
 		}
@@ -677,8 +683,26 @@ func (r *Run) call(ctx context.Context, kind requestKind, action string, body, o
 	}
 	r.mu.Lock()
 	path := "/api/v1/ci/runs/" + url.PathEscape(r.runID) + "/" + action
+	fromCache := r.fromCache
 	r.mu.Unlock()
-	return r.do(ctx, kind, tok, path, body, out)
+	err = r.do(ctx, kind, tok, path, body, out)
+	var se *StatusError
+	if fromCache && errors.As(err, &se) && se.Status == http.StatusUnauthorized {
+		// A run token another step left behind that the platform no longer
+		// takes: forget it and exchange this job's own token once.
+		r.mu.Lock()
+		r.dropCache()
+		r.token, r.runID, r.fromCache = "", "", false
+		r.mu.Unlock()
+		if tok, err = r.bearer(ctx); err != nil {
+			return err
+		}
+		r.mu.Lock()
+		path = "/api/v1/ci/runs/" + url.PathEscape(r.runID) + "/" + action
+		r.mu.Unlock()
+		err = r.do(ctx, kind, tok, path, body, out)
+	}
+	return err
 }
 
 // UploadResult counts what the platform stored from a report.
@@ -766,6 +790,10 @@ func (r *Run) Evaluate(ctx context.Context, scanFailures int) (*Verdict, error) 
 	if err := r.call(ctx, kindEvaluate, "evaluate", body, &v); err != nil {
 		return nil, fmt.Errorf("evaluate: %w", err)
 	}
+	// The run has its verdict: no later step reports into it.
+	r.mu.Lock()
+	r.dropCache()
+	r.mu.Unlock()
 	return &v, nil
 }
 
