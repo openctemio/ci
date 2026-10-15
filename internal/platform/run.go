@@ -408,7 +408,11 @@ func (r *Run) exchange(ctx context.Context, idToken string) (string, error) {
 	if err := r.do(ctx, kindExchange, "", "/api/v1/ci/oidc/exchange", body, &out); err != nil {
 		var se *StatusError
 		if errors.As(err, &se) && se.Status == http.StatusUnauthorized {
-			return "", fmt.Errorf("%w: %s (check the CI trust configuration, the audience %q and that the token is used once)",
+			if strings.HasPrefix(se.Message, "The CI token was not accepted") {
+				// The platform says why and what to check.
+				return "", fmt.Errorf("%w: %s (audience %q)", ErrRefused, se.Message, r.cfg.Audience)
+			}
+			return "", fmt.Errorf("%w: %s (check the CI trust configuration and the audience %q)",
 				ErrRefused, se.Message, r.cfg.Audience)
 		}
 		return "", fmt.Errorf("CI token exchange: %w", err)
