@@ -1,0 +1,340 @@
+{
+ "SchemaVersion": 2,
+ "ReportID": "01a13eb4-0862-749a-8631-8aa0c76a1ecf",
+ "CreatedAt": "2026-10-15T08:35:43Z",
+ "ArtifactName": ".",
+ "ArtifactType": "filesystem",
+ "Results": [
+  {
+   "Target": "poetry.lock",
+   "Class": "lang-pkgs",
+   "Type": "poetry",
+   "Packages": [
+    {
+     "ID": "jinja2@2.10",
+     "Name": "jinja2",
+     "Identifier": {
+      "PURL": "pkg:pypi/jinja2@2.10",
+      "UID": "4f87aee05498ac05"
+     },
+     "Version": "2.10",
+     "Relationship": "direct",
+     "DependsOn": [
+      "markupsafe@3.0.4"
+     ]
+    },
+    {
+     "ID": "requests@2.19.1",
+     "Name": "requests",
+     "Identifier": {
+      "PURL": "pkg:pypi/requests@2.19.1",
+      "UID": "c4bcbcded2bcf3a6"
+     },
+     "Version": "2.19.1",
+     "Relationship": "direct",
+     "DependsOn": [
+      "certifi@2026.7.22",
+      "chardet@3.0.4",
+      "idna@2.7",
+      "urllib3@1.23"
+     ]
+    },
+    {
+     "ID": "certifi@2026.7.22",
+     "Name": "certifi",
+     "Identifier": {
+      "PURL": "pkg:pypi/certifi@2026.7.22",
+      "UID": "b82a90d1d8ace2e"
+     },
+     "Version": "2026.7.22",
+     "Indirect": true,
+     "Relationship": "indirect"
+    },
+    {
+     "ID": "chardet@3.0.4",
+     "Name": "chardet",
+     "Identifier": {
+      "PURL": "pkg:pypi/chardet@3.0.4",
+      "UID": "98d39c385129905d"
+     },
+     "Version": "3.0.4",
+     "Indirect": true,
+     "Relationship": "indirect"
+    },
+    {
+     "ID": "idna@2.7",
+     "Name": "idna",
+     "Identifier": {
+      "PURL": "pkg:pypi/idna@2.7",
+      "UID": "7ab38a537928f668"
+     },
+     "Version": "2.7",
+     "Indirect": true,
+     "Relationship": "indirect"
+    },
+    {
+     "ID": "markupsafe@3.0.4",
+     "Name": "markupsafe",
+     "Identifier": {
+      "PURL": "pkg:pypi/markupsafe@3.0.4",
+      "UID": "dd9c5b69589af143"
+     },
+     "Version": "3.0.4",
+     "Indirect": true,
+     "Relationship": "indirect"
+    },
+    {
+     "ID": "urllib3@1.23",
+     "Name": "urllib3",
+     "Identifier": {
+      "PURL": "pkg:pypi/urllib3@1.23",
+      "UID": "6d72f3b70deb7ff7"
+     },
+     "Version": "1.23",
+     "Indirect": true,
+     "Relationship": "indirect"
+    }
+   ],
+   "Vulnerabilities": [
+    {
+     "VulnerabilityID": "CVE-2024-3651",
+     "PkgID": "idna@2.7",
+     "PkgName": "idna",
+     "PkgIdentifier": {
+      "PURL": "pkg:pypi/idna@2.7",
+      "UID": "7ab38a537928f668"
+     },
+     "InstalledVersion": "2.7",
+     "FixedVersion": "3.7",
+     "Status": "fixed",
+     "SeveritySource": "ghsa",
+     "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-3651",
+     "DataSource": {
+      "ID": "ghsa",
+      "Name": "GitHub Security Advisory pip",
+      "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Apip"
+     },
+     "Fingerprint": "sha256:45a67c31c0f053a4c99b55c71baadec5fa6796f200d07fd735e6beecd143500e",
+     "Title": "python-idna: potential DoS via resource consumption via specially crafted inputs to idna.encode()",
+     "Description": "A vulnerability was identified in the kjd/idna library, specifically within the `idna.encode()` function, affecting version 3.6. The issue arises from the funct",
+     "Severity": "MEDIUM",
+     "CweIDs": [
+      "CWE-1333"
+     ],
+     "VendorSeverity": {
+      "alma": 2,
+      "amazon": 2,
+      "azure": 3,
+      "cbl-mariner": 3,
+      "ghsa": 2,
+      "nvd": 3,
+      "oracle-oval": 2,
+      "photon": 3,
+      "redhat": 2,
+      "rocky": 2,
+      "ubuntu": 2
+     },
+     "CVSS": {
+      "ghsa": {
+       "V3Vector": "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+       "V40Vector": "CVSS:4.0/AV:L/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N",
+       "V3Score": 6.2,
+       "V40Score": 6.9
+      },
+      "nvd": {
+       "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+       "V3Score": 7.5
+      },
+      "redhat": {
+       "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:H",
+       "V3Score": 6.5
+      }
+     },
+     "References": [
+      "https://access.redhat.com/errata/RHSA-2024:3846",
+      "https://access.redhat.com/security/cve/CVE-2024-3651"
+     ],
+     "PublishedDate": "2024-07-07T18:15:09.827Z",
+     "LastModifiedDate": "2026-06-17T07:44:44.377Z"
+    },
+    {
+     "VulnerabilityID": "CVE-2019-10906",
+     "PkgID": "jinja2@2.10",
+     "PkgName": "jinja2",
+     "PkgIdentifier": {
+      "PURL": "pkg:pypi/jinja2@2.10",
+      "UID": "4f87aee05498ac05"
+     },
+     "InstalledVersion": "2.10",
+     "FixedVersion": "2.10.1",
+     "Status": "fixed",
+     "SeveritySource": "ghsa",
+     "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2019-10906",
+     "DataSource": {
+      "ID": "ghsa",
+      "Name": "GitHub Security Advisory pip",
+      "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Apip"
+     },
+     "Fingerprint": "sha256:3b5021aacce5363dfaacea213c8f6e7badd06ccbaeb63996b5d0429c541d0b0d",
+     "Title": "python-jinja2: str.format_map allows sandbox escape",
+     "Description": "In Pallets Jinja before 2.10.1, str.format_map allows a sandbox escape.",
+     "Severity": "HIGH",
+     "VendorSeverity": {
+      "amazon": 3,
+      "azure": 3,
+      "ghsa": 3,
+      "nvd": 3,
+      "oracle-oval": 3,
+      "redhat": 3,
+      "rocky": 3,
+      "ubuntu": 2
+     },
+     "CVSS": {
+      "ghsa": {
+       "V3Vector": "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:N/A:N",
+       "V40Vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:N/SC:H/SI:N/SA:N",
+       "V3Score": 8.6,
+       "V40Score": 7.7
+      },
+      "nvd": {
+       "V2Vector": "AV:N/AC:L/Au:N/C:P/I:N/A:N",
+       "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:N/A:N",
+       "V2Score": 5,
+       "V3Score": 8.6
+      },
+      "redhat": {
+       "V3Vector": "CVSS:3.0/AV:N/AC:H/PR:N/UI:N/S:C/C:H/I:H/A:H",
+       "V3Score": 9
+      }
+     },
+     "References": [
+      "http://lists.opensuse.org/opensuse-security-announce/2019-05/msg00030.html",
+      "http://lists.opensuse.org/opensuse-security-announce/2019-06/msg00064.html"
+     ],
+     "PublishedDate": "2019-04-07T00:29:00.213Z",
+     "LastModifiedDate": "2026-06-17T02:11:52.25Z"
+    },
+    {
+     "VulnerabilityID": "CVE-2018-18074",
+     "PkgID": "requests@2.19.1",
+     "PkgName": "requests",
+     "PkgIdentifier": {
+      "PURL": "pkg:pypi/requests@2.19.1",
+      "UID": "c4bcbcded2bcf3a6"
+     },
+     "InstalledVersion": "2.19.1",
+     "FixedVersion": "2.20.0",
+     "Status": "fixed",
+     "SeveritySource": "ghsa",
+     "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2018-18074",
+     "DataSource": {
+      "ID": "ghsa",
+      "Name": "GitHub Security Advisory pip",
+      "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Apip"
+     },
+     "Fingerprint": "sha256:282e7fa49c35144ac1d3d2d6ed9a8399d70398120d9437b9a2038e18d89f94d0",
+     "Title": "python-requests: Redirect from HTTPS to HTTP does not remove Authorization header",
+     "Description": "The Requests package before 2.20.0 for Python sends an HTTP Authorization header to an http URI upon receiving a same-hostname https-to-http redirect, which mak",
+     "Severity": "HIGH",
+     "CweIDs": [
+      "CWE-522"
+     ],
+     "VendorSeverity": {
+      "alma": 2,
+      "amazon": 2,
+      "ghsa": 3,
+      "nvd": 3,
+      "oracle-oval": 2,
+      "photon": 3,
+      "redhat": 1,
+      "rocky": 2,
+      "ubuntu": 2
+     },
+     "CVSS": {
+      "ghsa": {
+       "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+       "V3Score": 7.5
+      },
+      "nvd": {
+       "V2Vector": "AV:N/AC:L/Au:N/C:P/I:N/A:N",
+       "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+       "V2Score": 5,
+       "V3Score": 7.5
+      },
+      "redhat": {
+       "V3Vector": "CVSS:3.0/AV:A/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:N",
+       "V3Score": 2.6
+      }
+     },
+     "References": [
+      "http://docs.python-requests.org/en/master/community/updates/#release-and-version-history",
+      "http://lists.opensuse.org/opensuse-security-announce/2019-07/msg00024.html"
+     ],
+     "PublishedDate": "2018-10-09T17:29:01.897Z",
+     "LastModifiedDate": "2026-06-17T01:46:44.62Z"
+    },
+    {
+     "VulnerabilityID": "CVE-2019-11324",
+     "PkgID": "urllib3@1.23",
+     "PkgName": "urllib3",
+     "PkgIdentifier": {
+      "PURL": "pkg:pypi/urllib3@1.23",
+      "UID": "6d72f3b70deb7ff7"
+     },
+     "InstalledVersion": "1.23",
+     "FixedVersion": "1.24.2",
+     "Status": "fixed",
+     "SeveritySource": "ghsa",
+     "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2019-11324",
+     "DataSource": {
+      "ID": "ghsa",
+      "Name": "GitHub Security Advisory pip",
+      "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Apip"
+     },
+     "Fingerprint": "sha256:6f86a718420a33f1b872d18d01cceb781b6b2a056215449360628ef0158b46a7",
+     "Title": "python-urllib3: Certification mishandle when error should be thrown",
+     "Description": "The urllib3 library before 1.24.2 for Python mishandles certain cases where the desired set of CA certificates is different from the OS store of CA certificates",
+     "Severity": "HIGH",
+     "CweIDs": [
+      "CWE-295"
+     ],
+     "VendorSeverity": {
+      "alma": 2,
+      "amazon": 2,
+      "ghsa": 3,
+      "nvd": 3,
+      "oracle-oval": 2,
+      "photon": 3,
+      "redhat": 2,
+      "rocky": 2,
+      "ubuntu": 2
+     },
+     "CVSS": {
+      "ghsa": {
+       "V3Vector": "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N",
+       "V40Vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:H/VA:N/SC:N/SI:N/SA:N",
+       "V3Score": 7.5,
+       "V40Score": 8.7
+      },
+      "nvd": {
+       "V2Vector": "AV:N/AC:L/Au:N/C:N/I:P/A:N",
+       "V3Vector": "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N",
+       "V2Score": 5,
+       "V3Score": 7.5
+      },
+      "redhat": {
+       "V3Vector": "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:H/A:N",
+       "V3Score": 7.5
+      }
+     },
+     "References": [
+      "http://lists.opensuse.org/opensuse-security-announce/2019-09/msg00039.html",
+      "http://lists.opensuse.org/opensuse-security-announce/2019-09/msg00041.html"
+     ],
+     "PublishedDate": "2019-04-18T21:29:00.883Z",
+     "LastModifiedDate": "2026-06-17T02:12:42.91Z"
+    }
+   ]
+  }
+ ]
+}

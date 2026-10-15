@@ -264,7 +264,11 @@ func Command(c capability.Capability, opts Options, out string) ([]string, impor
 			"--exit-code", "0", "--no-banner", "--ignore-gitleaks-allow",
 			"--gitleaks-ignore-path", filepath.Dir(out)), importer.FormatBetterleaks, nil
 	case "sca":
-		return []string{"trivy", "fs", "--scanners", "vuln", "--format", "json", "--output", out,
+		// --list-all-pkgs: the package graph tells each finding whether its
+		// dependency is direct, the path that brings it in and its lockfile
+		// line; the report then keeps only the packages the findings need
+		// (keepFindingDependencies).
+		return []string{"trivy", "fs", "--scanners", "vuln", "--list-all-pkgs", "--format", "json", "--output", out,
 			"--exit-code", "0", "--quiet", "--config", "", "--ignorefile", "", target}, importer.FormatTrivy, nil
 	case "iac":
 		return []string{"trivy", "config", "--format", "json", "--output", out,

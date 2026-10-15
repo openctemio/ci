@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -379,5 +380,20 @@ func TestRunReturnsPartialReportWithTheError(t *testing.T) {
 		Environ: func() []string { return []string{"PATH=" + bin + ":/usr/bin:/bin"} }})
 	if err == nil || res == nil || !res.Partial || len(res.Output) == 0 {
 		t.Fatalf("res %+v, err %v", res, err)
+	}
+}
+
+// The sca scan lists every package, so each finding can say whether its
+// dependency is direct and the path that brings it in; the iac and container
+// scans do not.
+func TestSCAListsAllPackages(t *testing.T) {
+	for name, want := range map[string]bool{"sca": true, "iac": false, "container": false} {
+		argv, _, err := Command(capOf(t, name), Options{Image: "alpine:3"}, "/tmp/x/report.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := slices.Contains(argv, "--list-all-pkgs"); got != want {
+			t.Errorf("%s: --list-all-pkgs = %v, want %v (%v)", name, got, want, argv)
+		}
 	}
 }
