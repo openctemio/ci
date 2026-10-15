@@ -174,7 +174,7 @@ func (s *scanJob) run(ctx context.Context) int {
 
 	known := redact.RawSecrets(res.Format, res.Output)
 	report, err := s.convert(ctx, res, known, targetAbs, targetRel)
-	if err == nil && s.pr != nil {
+	if err == nil && s.pr != nil && secrethash.Applies(res.Format) {
 		// Each secret goes up as a keyed hash of its raw value (the key comes
 		// with the run); the value itself never does.
 		if n := secrethash.Apply(report, res.Format, res.Output, s.pr.SecretKey(ctx)); n > 0 {
