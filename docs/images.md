@@ -37,10 +37,16 @@ tag's commit. So the pins are refreshed before the tag, never after:
    `images.lock`. `scripts/check-release-refs.sh` (CI runs it) checks that
    `VERSION`, the usage references, the image tags and `images.lock` agree.
    Merge.
-3. Tag that commit `vX.Y.Z`. The image workflow checks the references again,
-   verifies each pinned digest's signature and version, and points `vX.Y.Z`
-   and `vX` at exactly those digests: the templates, the examples and the
-   GitHub Action run one binary.
+3. Tag that commit `vX.Y.Z`. The image workflow checks the references again
+   (`images.lock` must name `vX.Y.Z`), verifies each pinned digest's
+   signature and version, signs it again under the tag's own identity (the
+   GitHub Action accepts a `vX.Y.Z` image only with that signature), and
+   points `vX.Y.Z` and `vX` at exactly those digests: the templates, the
+   examples and the GitHub Action run one binary.
+
+Between steps 1 and 2 the usage references already name the new release
+while the templates still pin the previous one (`images.lock` says which);
+nobody runs `main`'s templates, and the tag is refused until they agree.
 
 Pin a digest in your pipeline (`ghcr.io/openctemio/ci-semgrep@sha256:...`).
 The GitHub Action and the reusable workflow resolve the tag to its digest,

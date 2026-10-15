@@ -1,7 +1,7 @@
 # OpenCTEM CI for GitLab: infrastructure-as-code misconfigurations (trivy), capability iac.
 #
 #   include:
-#     - remote: https://raw.githubusercontent.com/openctemio/ci/v0.3.0/gitlab/templates/iac.yml
+#     - remote: https://raw.githubusercontent.com/openctemio/ci/v0.3.1/gitlab/templates/iac.yml
 #   variables:
 #     OPENCTEM_API_URL: https://openctem.example.com
 #     OPENCTEM_TENANT_ID: <organization id>

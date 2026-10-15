@@ -30,8 +30,11 @@ while IFS= read -r line; do
   fail=1
 done < <(grep -nE 'ghcr\.io/openctemio/ci(-[a-z]+)?[:@ ]' gitlab/templates/*.yml examples/*/* | grep -v '@sha256:[0-9a-f]\{64\}' || true)
 
-# VERSION names the release; the usage references, the image tags in the
-# templates and examples, and images.lock all agree with it.
+# VERSION names the release being prepared; the usage references follow it.
+# The image tags in the templates and examples, and images.lock, name the
+# release the pinned images report (VERSION once pinned with
+# scripts/pin-images.sh; the previous release between the version bump and
+# the pin). At the release tag (RELEASE_CHECK=true) all of them must agree.
 version="$(tr -d '[:space:]' < VERSION)"
 if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "VERSION is not vX.Y.Z: $version" >&2
@@ -40,12 +43,21 @@ fi
 for v in $refs; do
   [ "$v" = "$version" ] || { echo "usage reference $v differs from VERSION $version" >&2; fail=1; }
 done
-while IFS= read -r line; do
-  echo "image tag is not the release $version (pin with scripts/pin-images.sh): $line" >&2
+pinned="$(awk '$1 == "version" {print $2}' images.lock)"
+if [[ ! "$pinned" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "images.lock names no release (a 'version vX.Y.Z' line)" >&2
   fail=1
-done < <(grep -noE 'ghcr\.io/openctemio/ci(-[a-z]+)?:[A-Za-z0-9._-]+@' gitlab/templates/*.yml examples/*/* | grep -vF ":${version}@" || true)
+fi
+if [ "${RELEASE_CHECK:-}" = true ] && [ "$pinned" != "$version" ]; then
+  echo "images.lock pins ${pinned}, not ${version}: run scripts/pin-images.sh before tagging" >&2
+  fail=1
+fi
+while IFS= read -r line; do
+  echo "image tag is not the pinned release $pinned (pin with scripts/pin-images.sh): $line" >&2
+  fail=1
+done < <(grep -noE 'ghcr\.io/openctemio/ci(-[a-z]+)?:[A-Za-z0-9._-]+@' gitlab/templates/*.yml examples/*/* | grep -vF ":${pinned}@" || true)
 while read -r name digest; do
-  [[ -z "$name" || "$name" == \#* ]] && continue
+  [[ -z "$name" || "$name" == \#* || "$name" == version ]] && continue
   if [[ ! "$name" =~ ^ci(-[a-z]+)?$ || ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
     echo "images.lock: bad line: $name $digest" >&2
     fail=1
@@ -59,5 +71,5 @@ while read -r name digest; do
 done < images.lock
 [ "$(grep -cE '^ci(-[a-z]+)? sha256:' images.lock)" = 5 ] || { echo "images.lock must list the five images" >&2; fail=1; }
 
-[ "$fail" = 0 ] && echo "release references: ${refs:-none}, images pinned"
+[ "$fail" = 0 ] && echo "release references: ${refs:-none}; images pinned to ${pinned}"
 exit "$fail"

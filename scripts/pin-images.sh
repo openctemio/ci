@@ -47,6 +47,7 @@ done
 {
   echo "# The images release ${version} runs (scripts/pin-images.sh). The release"
   echo "# tag points ${version} and its major tag at exactly these digests."
+  echo "version ${version}"
   printf '%s' "$lock"
 } > images.lock
 echo "Pinned ${version}. Review: git diff -- gitlab examples images.lock"

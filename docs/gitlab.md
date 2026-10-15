@@ -12,7 +12,7 @@ Templates in `gitlab/templates/`:
 
 ```yaml
 include:
-  - remote: https://raw.githubusercontent.com/openctemio/ci/v0.3.0/gitlab/templates/all.yml
+  - remote: https://raw.githubusercontent.com/openctemio/ci/v0.3.1/gitlab/templates/all.yml
 
 variables:
   OPENCTEM_API_URL: https://openctem.example.com

@@ -6,7 +6,7 @@ name: OpenCTEM scan
 #
 #   jobs:
 #     openctem:
-#       uses: openctemio/ci/.github/workflows/scan.yml@v0.3.0
+#       uses: openctemio/ci/.github/workflows/scan.yml@v0.3.1
 #       with:
 #         capabilities: sast,sca,secrets
 #         api-url: https://openctem.example.com
@@ -109,7 +109,7 @@ jobs:
           [ "${#out[@]}" -gt 0 ] || { echo "::error::no capability"; exit 1; }
           echo "capabilities=$(printf '%s\n' "${out[@]}" | jq -Rnc '[inputs]')" >> "$GITHUB_OUTPUT"
           echo "list=$(IFS=,; echo "${out[*]}")" >> "$GITHUB_OUTPUT"
-          # The image tag follows this workflow's ref: a release tag (@v0.3.0)
+          # The image tag follows this workflow's ref: a release tag (@v0.3.1)
           # or a major tag that releases publish (@v0) runs the matching
           # images, anything else the images built from main.
           if [ -z "$TAG" ]; then
