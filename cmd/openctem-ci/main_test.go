@@ -25,7 +25,9 @@ type fakePlatform struct {
 	exchanges []map[string]any
 	uploads   [][]byte
 	evaluates []map[string]int
-	verdict   string
+	// evalBodies are the raw verdict requests.
+	evalBodies [][]byte
+	verdict    string
 	// known is the upload response's known list (JSON), "" for none.
 	known string
 	// rejectUploads answers every upload 400 (a failed upload).
@@ -64,6 +66,7 @@ func (f *fakePlatform) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var m map[string]int
 		_ = json.Unmarshal(body, &m)
 		f.evaluates = append(f.evaluates, m)
+		f.evalBodies = append(f.evalBodies, body)
 		v := f.verdict
 		if v == "" {
 			v = "fail"

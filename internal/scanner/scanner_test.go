@@ -365,3 +365,19 @@ func TestSASTRulesPack(t *testing.T) {
 		t.Fatalf("argv %v %v", argv, err)
 	}
 }
+
+// A tool that fails after writing a report: Run returns the report marked
+// partial together with the error, never as a success.
+func TestRunReturnsPartialReportWithTheError(t *testing.T) {
+	bin := t.TempDir()
+	script := "#!/bin/sh\n[ \"$1\" = --version ] && exit 0\nwhile [ $# -gt 0 ]; do [ \"$1\" = --output ] && out=\"$2\"; shift; done\n" +
+		"echo '{\"Results\":[]}' > \"$out\"\necho crashed >&2\nexit 3\n"
+	if err := os.WriteFile(filepath.Join(bin, "trivy"), []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Run(context.Background(), capOf(t, "iac"), Options{Target: t.TempDir(), Timeout: time.Minute,
+		Environ: func() []string { return []string{"PATH=" + bin + ":/usr/bin:/bin"} }})
+	if err == nil || res == nil || !res.Partial || len(res.Output) == 0 {
+		t.Fatalf("res %+v, err %v", res, err)
+	}
+}

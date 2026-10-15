@@ -23,6 +23,7 @@ func enforced(getenv func(string) string) bool {
 // cannotReportError is a job that names a tenant but cannot report. Short
 // is what the status file keeps; Error is the full explanation with the fix.
 type cannotReportError struct {
+	class string
 	short string
 	long  string
 }
@@ -33,7 +34,7 @@ func (e *cannotReportError) Error() string { return e.long }
 // OpenCTEM, with the fix for each CI system.
 func reportingError(err error, idTokenVar string) error {
 	if errors.Is(err, platform.ErrNoOIDC) {
-		return &cannotReportError{short: "not uploaded: the job has no OIDC token", long: fmt.Sprintf("%s is set but this job has no OIDC token, so nothing can be reported to OpenCTEM. "+
+		return &cannotReportError{class: "no_oidc", short: "not uploaded: the job has no OIDC token", long: fmt.Sprintf("%s is set but this job has no OIDC token, so nothing can be reported to OpenCTEM. "+
 			"Fix: GitHub Actions: grant 'permissions: id-token: write' to the job; "+
 			"GitLab CI: add 'id_tokens: %s: aud: <the trust configuration's audience>' to the job; "+
 			"Azure Pipelines: map SYSTEM_ACCESSTOKEN: $(System.AccessToken); Bitbucket: 'oidc: true' on the step; "+
@@ -41,7 +42,7 @@ func reportingError(err error, idTokenVar string) error {
 			"To run as a scan only, unset %s, pass --no-push, or set %s=false",
 			platform.EnvTenantID, idTokenVar, idTokenVar, platform.EnvTenantID, envEnforce)}
 	}
-	return &cannotReportError{short: "not uploaded: reporting to OpenCTEM is not configured", long: fmt.Sprintf("%s is set but reporting to OpenCTEM is not available: %v. "+
+	return &cannotReportError{class: "not_configured", short: "not uploaded: reporting to OpenCTEM is not configured", long: fmt.Sprintf("%s is set but reporting to OpenCTEM is not available: %v. "+
 		"To run as a scan only, unset %s, pass --no-push, or set %s=false",
 		platform.EnvTenantID, err, platform.EnvTenantID, envEnforce)}
 }

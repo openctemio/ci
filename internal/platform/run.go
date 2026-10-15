@@ -752,11 +752,27 @@ type Verdict struct {
 // Failed reports whether the pipeline must fail.
 func (v *Verdict) Failed() bool { return v != nil && v.Verdict == "fail" }
 
+// CapabilityState is how one capability of the run ended: uploaded,
+// partial (the tool failed; what it found before failing was uploaded),
+// failed, not_uploaded or missing, with a short fixed reason. It goes with
+// the verdict request so the run can show each capability; scan_failures
+// stays what the gate fails on, and a platform that does not read
+// capabilities ignores them.
+type CapabilityState struct {
+	Name   string `json:"name"`
+	Tool   string `json:"tool,omitempty"`
+	State  string `json:"state"`
+	Reason string `json:"reason,omitempty"`
+}
+
 // Evaluate asks the platform's gate for the run's verdict. scanFailures is
 // the number of scans that failed to run or to report: any fails the run.
-func (r *Run) Evaluate(ctx context.Context, scanFailures int) (*Verdict, error) {
+func (r *Run) Evaluate(ctx context.Context, scanFailures int, caps ...CapabilityState) (*Verdict, error) {
 	var v Verdict
 	body := map[string]any{"scan_failures": scanFailures}
+	if len(caps) > 0 {
+		body["capabilities"] = caps
+	}
 	if len(r.repoPolicy) > 0 {
 		body["repo_policy"] = r.repoPolicy
 	}
