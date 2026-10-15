@@ -122,6 +122,11 @@ minutes) bound to one run on one repository. No API key is stored in CI.
   `OPENCTEM_TOKEN_CACHE=off` turns it off.
 - A CI system without OIDC runs in scan-only mode: SARIF, reports and the
   local gate, no upload.
+- A job that sets `OPENCTEM_TENANT_ID` and cannot report (no OIDC token, no
+  API URL) fails closed: `scan` and `gate` exit 2 with the fix, and the status
+  file records `not uploaded` and why. A fork is not a misconfiguration and
+  stays scan-only. `--no-push` or `OPENCTEM_ENFORCE=false` is the explicit
+  opt-out.
 
 ## Aggregate run
 

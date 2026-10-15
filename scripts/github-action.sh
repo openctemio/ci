@@ -124,11 +124,13 @@ pin() {
 # ---- reporting credentials ---------------------------------------------------
 report_env=()
 if [ -n "${OPENCTEM_TENANT_ID:-}" ]; then
-  report_env+=(-e OPENCTEM_TENANT_ID -e OPENCTEM_API_URL -e OPENCTEM_OIDC_AUDIENCE)
+  # enforce: false also lets a job without an OIDC token run as a scan only;
+  # otherwise openctem-ci fails closed when it cannot report.
+  report_env+=(-e OPENCTEM_TENANT_ID -e OPENCTEM_API_URL -e OPENCTEM_OIDC_AUDIENCE -e OPENCTEM_ENFORCE="$enforce")
   if [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
     report_env+=(-e ACTIONS_ID_TOKEN_REQUEST_URL -e ACTIONS_ID_TOKEN_REQUEST_TOKEN)
   else
-    echo "::warning::tenant-id is set but the job cannot request an OIDC token: grant 'permissions: id-token: write' (fork pull requests never get one). Scan only."
+    echo "::warning::tenant-id is set but the job cannot request an OIDC token: grant 'permissions: id-token: write'. Fork pull requests never get one and run as a scan only; any other run fails unless enforce: false."
   fi
 fi
 
