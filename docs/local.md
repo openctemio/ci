@@ -13,7 +13,7 @@ read-only:
 docker run --rm --read-only --tmpfs /tmp \
   --user "$(id -u):$(id -g)" --tmpfs "/home/openctem:uid=$(id -u),gid=$(id -g)" \
   -e OPENCTEM_WORKSPACE=/src -v "$PWD:/src:ro" \
-  ghcr.io/openctemio/ci:v0.3.0 scan --capability secrets --no-push --fail-on high
+  ghcr.io/openctemio/ci:v0.3.1 scan --capability secrets --no-push --fail-on high
 ```
 
 - `--capability` is one of `sast`, `sca`, `secrets`, `iac` (one per run; the
@@ -38,7 +38,7 @@ ones are stashed) and need Docker:
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/openctemio/ci
-    rev: v0.3.0
+    rev: v0.3.1
     hooks:
       - id: openctem-secrets   # any secret blocks the commit
       - id: openctem-sast      # high or critical static analysis findings block it

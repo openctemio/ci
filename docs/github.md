@@ -13,7 +13,7 @@ on:
 
 jobs:
   openctem:
-    uses: openctemio/ci/.github/workflows/scan.yml@v0.3.0   # a release tag, or a commit
+    uses: openctemio/ci/.github/workflows/scan.yml@v0.3.1   # a release tag, or a commit
     with:
       capabilities: sast,sca,secrets,iac
       api-url: https://openctem.example.com
@@ -29,7 +29,7 @@ Every capability runs in its own job and image, in parallel, and reports
 into **one** OpenCTEM CI run; a final `gate` job asks the platform gate for
 the verdict on all of them. A capability job that fails, is cancelled or does
 not upload fails the gate. The workflow runs the action of its own commit
-(`job.workflow_sha`), so a release tag such as `@v0.3.0` is fully pinned.
+(`job.workflow_sha`), so a release tag such as `@v0.3.1` is fully pinned.
 
 The caller must grant all three permissions: GitHub checks the permissions
 of every job of a reusable workflow when it starts, so a missing
@@ -53,7 +53,7 @@ jobs:
       - uses: actions/checkout@<sha> # pin actions by commit
         with:
           persist-credentials: false
-      - uses: openctemio/ci@v0.3.0   # a release tag, or a commit
+      - uses: openctemio/ci@v0.3.1   # a release tag, or a commit
         with:
           capabilities: sast,secrets
           api-url: https://openctem.example.com
@@ -131,7 +131,7 @@ the workspace with every CA the scan must trust, the public roots included,
 and set `ca-bundle`:
 
 ```yaml
-      - uses: openctemio/ci@v0.3.0
+      - uses: openctemio/ci@v0.3.1
         with:
           capabilities: sast,sca,secrets
           ca-bundle: .ci/ca-bundle.pem

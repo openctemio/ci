@@ -287,8 +287,11 @@ jobs:
   # A release tag points vX.Y.Z and vX at the digests the tagged commit pins
   # (images.lock, written by scripts/pin-images.sh): the binary the GitLab
   # templates, the examples and the GitHub Action run is one and the same,
-  # built and signed from main, reporting the release. Each digest's
-  # signature is verified before any tag moves.
+  # built and signed from main, reporting the release. Each digest's main
+  # signature and reported version are verified, then the digest is signed
+  # again by this tag's workflow run (the GitHub Action accepts a vX.Y.Z
+  # image only with the vX.Y.Z tag's signature), and only then do the tags
+  # move.
   release:
     name: Release tags
     needs: [prepare]
@@ -298,6 +301,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # Keyless signing of the released digests under this tag's identity.
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -310,15 +315,18 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Check the release references
+        env:
+          RELEASE_CHECK: 'true'
         run: bash scripts/check-release-refs.sh
       - name: Point the release tags at the pinned, signed digests
         env:
           TAGS: ${{ needs.prepare.outputs.tags }}
           VERSION_TAG: ${{ needs.prepare.outputs.version }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
         run: |
           n=0
           while read -r name digest; do
-            [[ -z "$name" || "$name" == \#* ]] && continue
+            [[ -z "$name" || "$name" == \#* || "$name" == version ]] && continue
             [[ "$name" =~ ^ci(-[a-z]+)?$ && "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::bad images.lock line"; exit 1; }
             image="${REGISTRY}/${name}"
             cosign verify "${image}@${digest}" \
@@ -326,6 +334,11 @@ jobs:
               --certificate-identity-regexp '^https://github\.com/openctemio/ci/\.github/workflows/images\.yml@refs/(heads/main|tags/v[0-9.]+)$' > /dev/null
             got="$(docker run --rm --entrypoint openctem-ci "${image}@${digest}" version | awk '{print $2}')"
             [[ "$got" == "$VERSION_TAG" || "$got" == "${VERSION_TAG}+"* ]] || { echo "::error::${name} reports ${got}, not ${VERSION_TAG}"; exit 1; }
+            # --recursive signs the index and each platform manifest.
+            cosign sign --yes --recursive "${image}@${digest}"
+            cosign verify "${image}@${digest}" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              --certificate-identity "https://github.com/${WORKFLOW_REF}" > /dev/null
             for t in $TAGS; do
               docker buildx imagetools create -t "${image}:${t}" "${image}@${digest}"
               now="$(docker buildx imagetools inspect "${image}:${t}" --format '{{json .Manifest}}' | jq -r .digest)"
