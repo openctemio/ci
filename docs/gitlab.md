@@ -36,6 +36,7 @@ predates this and runs a build of `main`; replace it.
 | `OPENCTEM_FAIL_ON` | local gate threshold when the platform gate cannot decide |
 | `OPENCTEM_SCAN_ARGS` | extra `openctem-ci scan` flags, e.g. `--target services/api` or `--sast-rules p/golang` |
 | `OPENCTEM_SCAN_IMAGE` | image to scan (`container.yml`) |
+| `OPENCTEM_ENFORCE` | `"false"` lets a job without its ID token run as a scan only; by default a job that sets `OPENCTEM_TENANT_ID` and has no `id_tokens` token fails with the fix |
 | `OPENCTEM_DISABLED` | `"true"` turns every job off |
 
 ## What GitLab shows

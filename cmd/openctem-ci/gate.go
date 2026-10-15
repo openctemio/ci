@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -66,8 +65,15 @@ func cmdGate(ctx context.Context, args []string, stdout, stderr io.Writer, e env
 				pr.SetRepoPolicy(raw)
 				_, _ = fmt.Fprintf(stdout, "Gate settings from %s are sent with the verdict request (they can only tighten the gate).\n", name)
 			}
-		} else if !errors.Is(err, platform.ErrNoOIDC) {
-			_, _ = fmt.Fprintf(stderr, "Warning: reporting to OpenCTEM is not available: %v\n", err)
+		} else if strings.TrimSpace(e.getenv(platform.EnvTenantID)) != "" {
+			// Configured to report but cannot: the verdict would be a local
+			// one nobody asked for, so the gate fails closed.
+			rerr := reportingError(err, nonEmpty(cfg.IDTokenVar, platform.DefaultIDTokenVar))
+			if enforced(e.getenv) {
+				_, _ = fmt.Fprintf(stderr, "Error: %s\n", platform.Sanitize(rerr.Error()))
+				return gate.ExitError
+			}
+			_, _ = fmt.Fprintf(stderr, "Warning: %s; local gate only (%s=false)\n", platform.Sanitize(rerr.Error()), envEnforce)
 		}
 	}
 
