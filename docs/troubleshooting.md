@@ -4,6 +4,45 @@ What a job log says when reporting to OpenCTEM fails, and what to change.
 The local reports (SARIF, GitLab report, status file) are written in every
 case.
 
+## No OIDC token
+
+`OPENCTEM_TENANT_ID is set but this job has no OIDC token` (exit 2): the job
+is configured to report but cannot. It fails instead of passing as a scan
+only, so a pipeline never turns green while nothing reached OpenCTEM.
+
+- GitHub Actions: `permissions: id-token: write` on the job.
+- GitLab CI: `id_tokens: OPENCTEM_ID_TOKEN: aud: <audience>` on the job (the
+  templates set it).
+- Azure Pipelines: map `SYSTEM_ACCESSTOKEN: $(System.AccessToken)`.
+- Bitbucket: `oidc: true` on the step.
+- CircleCI, Jenkins: put the job's token in `OPENCTEM_ID_TOKEN`
+  ([other-ci.md](other-ci.md)).
+
+A fork pull request never gets a token and runs as a scan only without this
+error. To run a job as a scan only on purpose, unset `OPENCTEM_TENANT_ID`,
+pass `--no-push`, or set `OPENCTEM_ENFORCE=false` (`enforce: false` in the
+GitHub action). A missing `OPENCTEM_API_URL` fails the same way. The status
+file records `upload: not_uploaded` with `upload_reason: no_oidc`.
+
+## trivy cache inside the checkout
+
+`the trivy cache directory is inside the checkout` (exit 2): `TRIVY_CACHE_DIR`
+(or `$XDG_CACHE_HOME/trivy`, or `$HOME/.cache/trivy`) points into the scanned
+tree. A cache there can be committed by the change under review and would be
+trusted as trivy's database, so sca, iac and container scans refuse it.
+Remove the variable to use the image's cache directory, or point it outside
+the checkout. A pipeline copied from an earlier GitLab template sets
+`TRIVY_CACHE_DIR: $CI_PROJECT_DIR/.openctem-trivy-cache` and a `cache:` for it:
+drop both ([gitlab.md](gitlab.md#cache)).
+
+## Large reports
+
+A report over 24 MiB or 10 000 findings goes up in parts (`the report was
+large and went up in N parts`). `OpenCTEM stored the report, but its full list
+of already-decided results could not be read` is a warning, not a failure:
+the platform has the results and its verdict is unaffected; the job's own
+output may still show some results that are already decided.
+
 ## The token exchange
 
 The platform answers a refused token with `401` and a code.
