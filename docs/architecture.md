@@ -137,6 +137,20 @@ per severity, no finding text) to the gate job as a CI artifact. A
 capability that is expected but missing, failed or not uploaded counts as a
 scan failure, and any scan failure fails the gate (fail closed).
 
+A scan job whose upload fails never fails the pipeline on that alone: with
+`--aggregate`, `--on-upload-error` defaults to `warn`. The job writes its
+local reports as always, prints a loud warning, records `pushed: false` in
+its status file and keeps its CTIS report beside it
+(`<capability>.pending.ctis.json`, already checked for raw secrets, the same
+content as the SARIF report). The gate job uploads every pending report with
+its own token into the same aggregate run before it asks for the verdict;
+only a report that still cannot be uploaded counts as not uploaded. A job
+that is its own gate (no `--aggregate`) defaults to `fail`, and the gate job
+stays fail closed when it gets no verdict. The gate reads a pending report
+only under its fixed name beside its status file, as a plain file of at most
+32 MiB; the platform refuses a report about another repository, so the
+report adds nothing the scan job's own token could not upload.
+
 A platform that does not answer `aggregate: true` is refused
 (`ErrNoAggregate`): otherwise the gate job would judge an empty run and pass.
 
