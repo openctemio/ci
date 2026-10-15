@@ -20,7 +20,7 @@ pr:
     include: ['*']
 
 variables:
-  OPENCTEM_IMAGE: ghcr.io/openctemio/ci:edge@sha256:ab55db98e540916a11a9f8d4b24fb837eb2f37458a21aee0551d1677bac8966b
+  OPENCTEM_IMAGE: ghcr.io/openctemio/ci:v0.3.0@sha256:94146119d4584e2b53b0ebacef336fe60d4f500ff09bff0f98357c01e8cc861a
   OPENCTEM_FAIL_ON: high
   OPENCTEM_API_URL:  # e.g. https://openctem.example.com
   OPENCTEM_TENANT_ID:  # your OpenCTEM organization id; empty: scan only

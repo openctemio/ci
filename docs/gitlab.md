@@ -23,6 +23,13 @@ Pin the include to a release tag (or a commit), never `main`. The templates
 are self-contained files, so they can also be copied into a project or
 mirrored to a GitLab project for the CI/CD Catalog.
 
+**Updating.** Change the tag in the `include` line (and nothing else) to the
+new release. A copied template is updated by copying the file of the new
+release tag again: its image references read
+`ghcr.io/openctemio/<image>:vX.Y.Z@sha256:...`, and `openctem-ci version` in
+the job log prints that release. A copy whose images read `:edge@sha256:...`
+predates this and runs a build of `main`; replace it.
+
 | Variable | Meaning |
 |---|---|
 | `OPENCTEM_API_URL`, `OPENCTEM_TENANT_ID` | report to OpenCTEM (OIDC; no stored key) |

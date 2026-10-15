@@ -26,7 +26,7 @@ variables:
 openctem-container:
   stage: test
   image:
-    name: ghcr.io/openctemio/ci-trivy:edge@sha256:b5aa9b3db1c8e862a8b44f6443455fb8ca04ec4fead6dd432e75a91dc6c4ae2c
+    name: ghcr.io/openctemio/ci-trivy:v0.3.0@sha256:19aa958fdaa1dac4e00cae34975201c7aeaa568dc9ce2c3ab2b3bb2d9d5c22c7
     entrypoint: [""]
   id_tokens:
     OPENCTEM_ID_TOKEN:
