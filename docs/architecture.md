@@ -96,10 +96,22 @@ taxonomy ids (`ctis/capability`), checked by a test.
 | Name | Capability id | Tool | Image | GitLab report |
 |---|---|---|---|---|
 | `sast` | `sast.code@1` | opengrep (semgrep in `ci-semgrep`) | `ghcr.io/openctemio/ci-opengrep` | `sast` |
-| `sca` | `sca.deps@1` | trivy (`fs`, vulnerabilities) | `ghcr.io/openctemio/ci-trivy` | `dependency_scanning` |
+| `sca` | `sca.deps@1` | trivy (`fs`, vulnerabilities, `--list-all-pkgs`) | `ghcr.io/openctemio/ci-trivy` | `dependency_scanning` |
 | `secrets` | `secrets.code@1` | betterleaks | `ghcr.io/openctemio/ci-betterleaks` | `secret_detection` |
 | `iac` | `iac.misconfig@1` | trivy (`config`) | `ghcr.io/openctemio/ci-trivy` | `sast` |
 | `container` | `container.image@1` | trivy (`image`) | `ghcr.io/openctemio/ci-trivy` | `container_scanning` |
+
+An `sca` finding says whether its dependency is direct
+(`vulnerability.is_direct`) and how it is brought in
+(`vulnerability.dependency_path`: package ids from the project or the direct
+dependency to the vulnerable package, at most 32), with the package's PURL and,
+as its location, the lockfile and the package's lines in it where trivy
+reports them (`package-lock.json` does; `poetry.lock` gives the file only). trivy lists every
+package of the lockfiles for this (`--list-all-pkgs`); the uploaded report's
+`dependencies` keep only the packages a finding names, the packages on the
+findings' paths and the project entries, at most 10 000, with `depends_on`
+limited to kept packages. The report's size follows the findings, not the
+dependency tree; a full package inventory (SBOM) is not what `sca` uploads.
 
 A `container` report carries the image reference (`metadata.properties.container_image`)
 and its content digest (`image_digest`, from the registry digest trivy reports), so
@@ -223,7 +235,7 @@ A platform that does not answer `aggregate: true` is refused
 | A scanned repository runs code through the tool's environment | The tool gets an allow-listed environment (no OIDC request token, ID token, job token, platform or API key); the tool is resolved only from absolute PATH entries |
 | A raw secret reaches the platform, an artifact or the log | Each secret goes up only as `HMAC-SHA256` of its raw value under the key the exchange hands the run (per organization and repository; CTIS partial fingerprint `secretHMAC/v1`), so the platform keys the finding on the secret without seeing it. Secret scanner output goes to a private 0700 temp dir, removed after the run; every finding is masked (`ctis.RedactSecretFinding` with the raw values); every output is checked for the raw values before it is written or sent, and the run stops instead (`ErrSecretInOutput`); SARIF and GitLab reports carry no snippet; the secret scanner is never run with `--verbose` |
 | A report names another repository or a path outside the checkout | The target must resolve inside the workspace; the report keeps one repository asset; paths outside the repository are cleared; the platform re-validates (`ScopeReport`) |
-| Hostile tool output (huge, deep, malformed) | Bounded reads (512 MB), `ctis/importer` limits; a parse error is a scan failure |
+| Hostile tool output (huge, deep, malformed) | Bounded reads (512 MB), `ctis/importer` limits; a parse error is a scan failure. The sca package graph is walked with a bounded search (cycles end, at most 32 path entries) and the uploaded dependencies are capped at 10 000 |
 | Platform or scanner text forges CI log lines | Control characters and `::` workflow-command prefixes are removed before printing |
 | A pull request changes scanner configuration committed in the tree to hide its own findings (a `trivy.yaml` severity threshold, a `.trivyignore`, a `.gitleaks.toml` allowlist, a `.betterleaksignore`) | Those files are not read: trivy runs with `--config ""` and `--ignorefile ""`, betterleaks with its built-in rules (unless the pipeline sets `BETTERLEAKS_CONFIG*`) and an ignore path outside the tree; configuration comes from the pipeline, exceptions are requested in `.openctem.yml` and approved in OpenCTEM. SAST runs with `--disable-nosem` and `--x-ignore-semgrepignore-files`: results under an inline ignore comment are reported (marked as in-source claims) and `.semgrepignore` patterns are sent as claims; OpenCTEM turns a default-branch run's claims into pending requests, and the gate counts the results until one is approved |
 | A pull request commits a trivy cache directory (a database whose metadata says "fresh", or a checks bundle) so that sca, iac and container scans use it and find nothing | trivy's cache lives outside the checkout (the image's `/home/openctem/.cache/trivy`; the GitLab templates no longer cache it in the tree and no longer skip a fixed directory). `openctem-ci` refuses to run trivy when the effective cache directory (`TRIVY_CACHE_DIR`, `$XDG_CACHE_HOME/trivy`, `$HOME/.cache/trivy`, symbolic links resolved) is inside the checkout: the scan fails with exit 2 and nothing is uploaded, so the run fails rather than looking clean |

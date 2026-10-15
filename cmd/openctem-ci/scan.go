@@ -350,6 +350,11 @@ func (s *scanJob) convert(ctx context.Context, res *scanner.Result, known []stri
 	if res.Format == importer.FormatTrivy && s.c.Target == capability.TargetRepository {
 		locateTrivyTargets(r)
 	}
+	if s.c.Name == "sca" {
+		if n := keepFindingDependencies(r); n > 0 {
+			s.logf("[%s] %d package(s) without a finding are not uploaded", s.c.Name, n)
+		}
+	}
 	st := scope.Apply(r, scope.Options{Repository: s.info.Repository, TargetRel: targetRel, TargetAbs: targetAbs,
 		RepositoryPaths: s.c.Target == capability.TargetRepository})
 	if st.PathsCleared > 0 {
