@@ -12,7 +12,7 @@
 # scripts/pin-images.sh); Bitbucket runs the script inside it.
 
 image:
-  name: ghcr.io/openctemio/ci:edge@sha256:ab55db98e540916a11a9f8d4b24fb837eb2f37458a21aee0551d1677bac8966b
+  name: ghcr.io/openctemio/ci:v0.3.0@sha256:94146119d4584e2b53b0ebacef336fe60d4f500ff09bff0f98357c01e8cc861a
   run-as-user: 1001
 
 options:
