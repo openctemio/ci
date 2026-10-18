@@ -22,5 +22,16 @@ while read -r repo; do
     fail=1
   fi
 done < <(printf '%s\n' "$froms" | cut -d: -f1 | cut -d@ -f1 | sort -u)
+# Tool pins set as build arguments (opengrep, the rules pack): one value per
+# argument across every Dockerfile that sets it.
+while read -r name; do
+  [ -z "$name" ] && continue
+  n=$(grep -hE "^ARG ${name}=" images/*/Dockerfile | sort -u | wc -l)
+  if [ "$n" -ne 1 ]; then
+    echo "FAIL build argument $name differs across Dockerfiles:" >&2
+    grep -HE "^ARG ${name}=" images/*/Dockerfile >&2
+    fail=1
+  fi
+done < <(grep -hoE '^ARG [A-Z0-9_]*(_VERSION|_SHA256[A-Z0-9_]*)=' images/*/Dockerfile | sed -E 's/^ARG //; s/=$//' | sort -u)
 [ "$fail" -eq 0 ] && echo "All image pins are digests and consistent."
 exit "$fail"

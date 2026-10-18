@@ -16,7 +16,7 @@ docker run --rm --read-only --tmpfs /tmp \
   ghcr.io/openctemio/ci:v0.3.1 scan --capability secrets --no-push --fail-on high
 ```
 
-- `--capability` is one of `sast`, `sca`, `secrets`, `iac` (one per run; the
+  `ci` image has every tool (sast runs opengrep with the OpenCTEM rules pack), the `ci-opengrep`, `ci-semgrep`, `ci-trivy` and `ci-betterleaks`
   `ci` image has every tool, the `ci-opengrep`, `ci-semgrep`, `ci-trivy` and `ci-betterleaks`
   images one each).
 - `--user` and the `/home/openctem` tmpfs let the tools write their caches as

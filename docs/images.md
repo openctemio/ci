@@ -6,7 +6,7 @@
 | `ghcr.io/openctemio/ci-semgrep` | semgrep | `sast` |
 | `ghcr.io/openctemio/ci-trivy` | trivy | `sca`, `iac`, `container` |
 | `ghcr.io/openctemio/ci-betterleaks` | betterleaks | `secrets` |
-| `ghcr.io/openctemio/ci` | all of them | all |
+| `ghcr.io/openctemio/ci` | opengrep (with the OpenCTEM rules pack), trivy, betterleaks | all |
 
 Each image is the tool plus the same `openctem-ci` binary, with
 `ENTRYPOINT ["openctem-ci"]`. No nuclei, no recon tools.
@@ -48,7 +48,7 @@ Between steps 1 and 2 the usage references already name the new release
 while the templates still pin the previous one (`images.lock` says which);
 nobody runs `main`'s templates, and the tag is refused until they agree.
 
-Pin a digest in your pipeline (`ghcr.io/openctemio/ci-semgrep@sha256:...`).
+Pin a digest in your pipeline (`ghcr.io/openctemio/ci-opengrep@sha256:...`).
 The GitHub Action and the reusable workflow resolve the tag to its digest,
 verify the signature and run exactly that digest.
 
@@ -62,6 +62,9 @@ verify the signature and run exactly that digest.
   the release's binary, pinned by version and SHA-256 per architecture, and
   its keyless signature is verified with cosign against the opengrep
   release workflow of that version at build time (no Python, no installer).
+  `ci-opengrep` and `ci` carry the same opengrep and rules pack pins: the
+  pin check also keeps every `*_VERSION` and `*_SHA256*` build argument
+  identical across the Dockerfiles that set it.
   The OpenCTEM rules pack (`/opt/openctem/sast-rules`) is a release of
   openctemio/sast-rules whose signature bundle is verified at build time
   against that repository's release workflow at the exact tag.

@@ -18,7 +18,7 @@ case "$variant" in
   semgrep) tools="semgrep"; caps="sast" ;;
   trivy) tools="trivy"; caps="sca iac" ;;
   betterleaks) tools="betterleaks"; caps="secrets" ;;
-  all) tools="semgrep trivy betterleaks"; caps="sast sca iac secrets" ;;
+  all) tools="opengrep trivy betterleaks"; caps="sast sca iac secrets" ;;
   *) echo "unknown variant: $variant" >&2; exit 2 ;;
 esac
 
@@ -70,8 +70,9 @@ done
 # engine reports the fixture's request-to-command and request-to-query flows,
 # and the CTIS report carries each one as a data flow with a source and a
 # sink. opengrep writes the trace; semgrep's open-source engine no longer
-# does (checked with 1.180.0), so the check is required for opengrep only.
-if [ "$variant" = opengrep ]; then
+# does (checked with 1.180.0), so the check is required for the opengrep
+# images (ci-opengrep and ci) only.
+if [ "$variant" = opengrep ] || [ "$variant" = all ]; then
   mkdir -p "$work/.openctem-selftest"
   cp "$root/testdata/rules/taint.yaml" "$work/.openctem-selftest/taint.yaml"
   chmod -R a+rwX "$work"
