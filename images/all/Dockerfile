@@ -1,9 +1,11 @@
 # syntax=docker/dockerfile:1.7
-# ghcr.io/openctemio/ci: every CI tool (semgrep, trivy, betterleaks) + openctem-ci.
+# ghcr.io/openctemio/ci: every CI tool (opengrep, trivy, betterleaks) + openctem-ci.
 # Build from the repository root: docker build -f images/all/Dockerfile .
 #
 # The same pins as the per-tool images (images/<tool>/Dockerfile); a CI
-# check keeps them identical.
+# check keeps them identical (scripts/check-image-pins.sh). The default sast
+# rules are the OpenCTEM rules pack, as in ci-opengrep: the image never
+# falls back to registry rules.
 
 FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS build
 WORKDIR /src
@@ -18,34 +20,85 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags="-s -w -X main.Version=${VERSION}" -o /out/openctem-ci ./cmd/openctem-ci
 
+FROM ghcr.io/sigstore/cosign/cosign:v3.1.3@sha256:9e5c2f2edc34351160407ca3416c61855bdf9403c3c5936e0f0be7fc261611b8 AS cosign
+
+FROM docker.io/library/alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS opengrep
+ARG TARGETARCH
+ARG OPENGREP_VERSION=1.31.0
+ARG OPENGREP_SHA256_AMD64=02c9fba481611aa0664bc79ccf7ce59e9e334b76af8921c80b2f738d17fabf9b
+ARG OPENGREP_SHA256_ARM64=b7cbedab0b6c9953ea27ce3baa006ad8b6fa1c50ee7433638b63f7fc731519d9
+COPY --from=cosign /ko-app/cosign /usr/local/bin/cosign
+# hadolint ignore=DL3018
+RUN apk add --no-cache ca-certificates curl
+SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+RUN case "${TARGETARCH}" in \
+    amd64) arch=x86; sum="${OPENGREP_SHA256_AMD64}" ;; \
+    arm64) arch=aarch64; sum="${OPENGREP_SHA256_ARM64}" ;; \
+    *) echo "unsupported architecture ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    f="opengrep_musllinux_${arch}"; \
+    base="https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}"; \
+    cd /tmp; \
+    curl -fsSLo "$f" "$base/$f"; curl -fsSLo "$f.cert" "$base/$f.cert"; curl -fsSLo "$f.sig" "$base/$f.sig"; \
+    echo "$sum  $f" | sha256sum -c -; \
+    cosign verify-blob --cert "$f.cert" --signature "$f.sig" \
+        --certificate-identity "https://github.com/opengrep/opengrep/.github/workflows/rolling-release.yml@refs/heads/release-v${OPENGREP_VERSION}" \
+        --certificate-oidc-issuer https://token.actions.githubusercontent.com "$f"; \
+    install -m 0755 "$f" /opengrep; \
+    # The binary unpacks its runtime into $XDG_CACHE_HOME/opengrep on first
+    # run, owner-only: unpack it here and make it readable, not writable,
+    # so the image runs it read-only as any user.
+    XDG_CACHE_HOME=/opt/opengrep/cache HOME=/tmp /opengrep --version | grep -qx "${OPENGREP_VERSION}"; \
+    chmod -R a+rX,go-w /opt/opengrep/cache
+
+# The OpenCTEM rules pack (github.com/openctemio/sast-rules): a release
+# bundle whose cosign keyless signature must verify for the pack's release
+# workflow at exactly this tag. It is the image's default sast rules.
+FROM docker.io/library/alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS rules
+ARG SAST_RULES_VERSION=0.1.0
+ARG SAST_RULES_SHA256=6bcd18f7d6f65fbbccc0d965a86010e10da7d8f9e217a39597fe52e3fef4df6d
+COPY --from=cosign /ko-app/cosign /usr/local/bin/cosign
+# hadolint ignore=DL3018
+RUN apk add --no-cache ca-certificates curl
+SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+RUN f="sast-rules-${SAST_RULES_VERSION}.tar.gz"; \
+    base="https://github.com/openctemio/sast-rules/releases/download/v${SAST_RULES_VERSION}"; \
+    cd /tmp; \
+    curl -fsSLo "$f" "$base/$f"; curl -fsSLo "$f.sigstore.json" "$base/$f.sigstore.json"; \
+    echo "${SAST_RULES_SHA256}  $f" | sha256sum -c -; \
+    cosign verify-blob --bundle "$f.sigstore.json" \
+        --certificate-identity "https://github.com/openctemio/sast-rules/.github/workflows/release.yml@refs/tags/v${SAST_RULES_VERSION}" \
+        --certificate-oidc-issuer https://token.actions.githubusercontent.com "$f"; \
+    mkdir -p /opt/openctem/sast-rules; \
+    tar -xzf "$f" -C /opt/openctem/sast-rules --strip-components=1 --no-same-owner; \
+    test -d /opt/openctem/sast-rules/rules; \
+    grep -qx "${SAST_RULES_VERSION}" /opt/openctem/sast-rules/VERSION; \
+    chmod -R a+rX,go-w /opt/openctem/sast-rules
+
 FROM ghcr.io/aquasecurity/trivy:0.76.0@sha256:2416d1f74045b57274df1a340eee6b510cacd73c66a6ccb8da092b117eb7d222 AS trivy
 RUN cp "$(command -v trivy)" /trivy && /trivy --version
 
 FROM ghcr.io/betterleaks/betterleaks:v1.9.0@sha256:e3b95b0db6c2735db17165c009b0ad6d9cef34fb4578659232b98f69d7346cac AS betterleaks
 RUN cp "$(command -v betterleaks)" /betterleaks && /betterleaks version
 
-FROM docker.io/library/python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+FROM docker.io/library/alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 LABEL org.opencontainers.image.title="openctem-ci" \
-      org.opencontainers.image.description="OpenCTEM CI scanning: semgrep, trivy, betterleaks and openctem-ci" \
+      org.opencontainers.image.description="OpenCTEM CI scanning: opengrep, trivy, betterleaks and openctem-ci" \
       org.opencontainers.image.source="https://github.com/openctemio/ci" \
       org.opencontainers.image.licenses="GPL-3.0-only"
-# hadolint ignore=DL3008
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git \
-    && rm -rf /var/lib/apt/lists/*
-COPY images/semgrep/requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir --require-hashes --no-deps -r /tmp/requirements.txt \
-    && semgrep --version \
-    && rm -rf /tmp/requirements.txt /usr/local/lib/python3.12/site-packages/pip \
-        /usr/local/lib/python3.12/site-packages/pip-*.dist-info /usr/local/lib/python3.12/ensurepip \
-        /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.* \
-    && ! python3 -m pip --version >/dev/null 2>&1 \
-    && groupadd -g 1001 openctem && useradd -u 1001 -g openctem -d /home/openctem -m openctem
+# git: opengrep lists the files to scan and finds the baseline with it;
+# betterleaks reads history in git mode.
+# hadolint ignore=DL3018
+RUN apk add --no-cache ca-certificates git \
+    && addgroup -g 1001 openctem && adduser -D -u 1001 -G openctem -h /home/openctem openctem
+COPY --from=opengrep /opengrep /usr/local/bin/opengrep
+COPY --from=opengrep /opt/opengrep/cache /opt/opengrep/cache
+COPY --from=rules /opt/openctem/sast-rules /opt/openctem/sast-rules
 COPY --from=trivy /trivy /usr/local/bin/trivy
 COPY --from=betterleaks /betterleaks /usr/local/bin/betterleaks
 COPY --from=build /out/openctem-ci /usr/local/bin/openctem-ci
 ENV HOME=/home/openctem \
-    SEMGREP_SEND_METRICS=off \
-    SEMGREP_ENABLE_VERSION_CHECK=0 \
+    XDG_CACHE_HOME=/opt/opengrep/cache \
     TRIVY_CACHE_DIR=/home/openctem/.cache/trivy \
     TRIVY_NO_PROGRESS=true
 # uid 1001 is the GitHub-hosted runner user that owns the checkout.
