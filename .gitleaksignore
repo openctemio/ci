@@ -1,0 +1,5 @@
+# Verified false positives in the history (commit:file:rule:line): documentation
+# placeholders and test fixtures, none a real credential (history audit 2026-10-18).
+# Add a line only after confirming the match is not a real credential.
+382c09f920f271ec1657e449a8718c197e8aa999:.github/workflows/self-test.yml:generic-api-key:25
+fea0f8936da6bdfbd99a813b67de3d04537100fb:scripts/gitlab-local-test.sh:generic-api-key:14
