@@ -5,4 +5,4 @@
 # the locked packages one by one breaks semgrep (its dependencies move in
 # step). The image build runs semgrep --version and the Images workflow
 # smoke-tests a scan.
-semgrep==1.180.0
+semgrep==1.181.0
