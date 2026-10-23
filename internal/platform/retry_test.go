@@ -199,8 +199,8 @@ func TestRetryable(t *testing.T) {
 			t.Errorf("backoff(%d) = %s", n, d)
 		}
 	}
-	if backoff(1, "600") > 40*time.Second {
-		t.Error("an unbounded Retry-After was honoured")
+	if d := backoff(1, "600"); d != maxRetryAfter {
+		t.Errorf("a Retry-After past the bound waits %s, want the bound %s", d, maxRetryAfter)
 	}
 }
 

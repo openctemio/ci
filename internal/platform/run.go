@@ -580,11 +580,17 @@ func retryable(kind requestKind, status int, err error) bool {
 	return status >= 500
 }
 
+// maxRetryAfter bounds how long a Retry-After makes the client wait.
+const maxRetryAfter = 120 * time.Second
+
 // backoff is the wait before attempt n (1-based): 1s, 2s, 4s ... capped at
-// 30s with ±25% jitter; a Retry-After of up to 2 minutes wins.
+// 30s with ±25% jitter; a Retry-After wins, bounded by maxRetryAfter (a
+// longer one, such as the platform's queue back-pressure of up to 5
+// minutes, waits the bound instead of falling back to the short schedule
+// and spending the retries early).
 func backoff(n int, retryAfter string) time.Duration {
-	if s, err := strconv.Atoi(strings.TrimSpace(retryAfter)); err == nil && s >= 0 && s <= 120 {
-		return time.Duration(s) * time.Second
+	if s, err := strconv.Atoi(strings.TrimSpace(retryAfter)); err == nil && s >= 0 {
+		return time.Duration(min(s, int(maxRetryAfter/time.Second))) * time.Second
 	}
 	d := time.Second << min(n-1, 5)
 	d = min(d, 30*time.Second)
