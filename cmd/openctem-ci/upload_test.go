@@ -296,3 +296,77 @@ func TestUploadIdentity(t *testing.T) {
 		t.Error("nothing is uploaded without an identity")
 	}
 }
+
+func TestUploadThroughAMappingSendsTheFormatQuery(t *testing.T) {
+	cases := []struct{ format, query string }{
+		{"mapping:acme-scan", "format=mapping%3Aacme-scan"},
+		{"mapping:acme.scan_2@3", "format=mapping%3Aacme.scan_2%403"},
+	}
+	for _, c := range cases {
+		h := setup(t)
+		csv := h.report("findings.csv", "title,severity\nopen port,high\n")
+		code, stdout, stderr := h.run("upload", "--format", c.format, csv)
+		if code != 0 {
+			t.Fatalf("%s: exit %d\n%s\n%s", c.format, code, stdout, stderr)
+		}
+		if len(h.p.uploads) != 1 || string(h.p.uploads[0]) != "title,severity\nopen port,high\n" {
+			t.Fatalf("%s: uploads %q", c.format, h.p.uploads)
+		}
+		if h.p.uploadQueries[0] != c.query {
+			t.Errorf("%s: query %q, want %q", c.format, h.p.uploadQueries[0], c.query)
+		}
+	}
+}
+
+func TestUploadWithoutAMappingSendsNoQuery(t *testing.T) {
+	h := setup(t)
+	if code, _, stderr := h.run("upload", h.report("scan.sarif", sarifReport)); code != 0 {
+		t.Fatalf("exit %d\n%s", code, stderr)
+	}
+	if h.p.uploadQueries[0] != "" {
+		t.Errorf("query %q: detection stays as it was", h.p.uploadQueries[0])
+	}
+}
+
+func TestUploadMappingKeyDiffersFromPlainAndPerMapping(t *testing.T) {
+	h := setup(t)
+	f := h.report("data.json", `{"a":1}`)
+	for _, fm := range []string{"mapping:one", "mapping:two"} {
+		if code, _, stderr := h.run("upload", "--format", fm, f); code != 0 {
+			t.Fatalf("exit %d\n%s", code, stderr)
+		}
+	}
+	plain := platform.IdempotencyKey("run-1", sha256.Sum256([]byte(`{"a":1}`)))
+	if h.p.uploadKeys[0] == h.p.uploadKeys[1] || h.p.uploadKeys[0] == plain || h.p.uploadKeys[1] == plain {
+		t.Errorf("the same file through another mapping is another import: %v", h.p.uploadKeys)
+	}
+}
+
+func TestUploadRejectsABadMappingBeforeAnyRequest(t *testing.T) {
+	for _, bad := range []string{"mapping:", "mapping:Acme", "mapping:-x", "mapping:a b", "mapping:a@0", "mapping:a@-1", "mapping:a@x",
+		"mapping:a@1@2", "mapping:" + strings.Repeat("a", 65), "mapping:a/../b", "mapping:a&format=sarif"} {
+		h := setup(t)
+		code, _, stderr := h.run("upload", "--format", bad, h.report("d.csv", "a,b\n1,2\n"))
+		if code != 2 || !strings.Contains(stderr, "mapping:<name>[@<version>]") {
+			t.Errorf("%q: exit %d\n%s", bad, code, stderr)
+		}
+		if len(h.p.exchanges) != 0 || len(h.p.uploads) != 0 {
+			t.Errorf("%q: nothing may be sent", bad)
+		}
+	}
+}
+
+func TestUploadMappingRefusesAnArchive(t *testing.T) {
+	h := setup(t)
+	zp := filepath.Join(h.out, "r.zip")
+	zf, _ := os.Create(zp)
+	zw := zip.NewWriter(zf)
+	w, _ := zw.Create("a.csv")
+	_, _ = w.Write([]byte("a,b\n1,2\n"))
+	_ = zw.Close()
+	_ = zf.Close()
+	code, _, stderr := h.run("upload", "--format", "mapping:acme", zp)
+	if code != 2 || !strings.Contains(stderr, "archive") || len(h.p.exchanges) != 0 {
+		t.Fatalf("exit %d\n%s", code, stderr)
+	}
+}

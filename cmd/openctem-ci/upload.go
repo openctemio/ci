@@ -62,7 +62,7 @@ func cmdUpload(ctx context.Context, args []string, stdout, stderr io.Writer, e e
 		fs.PrintDefaults()
 	}
 	var f uploadFlags
-	fs.StringVar(&f.format, "format", "auto", "the format every file must have ("+formatNames()+"), or auto (detect each file)")
+	fs.StringVar(&f.format, "format", "auto", "the format every file must have ("+formatNames()+"), auto (detect each file), or mapping:<name>[@<version>] to read every file through a saved import mapping")
 	fs.BoolVar(&f.aggregate, "aggregate", false, "upload into the run shared by all jobs of this pipeline; a final 'gate' job decides")
 	fs.BoolVar(&f.gate, "gate", false, "ask the platform's gate for the run's verdict after the upload (not with --aggregate)")
 	fs.StringVar(&f.receiptOut, "receipt", "", "write the receipt as JSON to this file")
@@ -74,9 +74,17 @@ func cmdUpload(ctx context.Context, args []string, stdout, stderr io.Writer, e e
 		_, _ = fmt.Fprintf(stderr, "Error: "+format+"\n", a...)
 		return gate.ExitError
 	}
-	f.format = strings.ToLower(strings.TrimSpace(f.format))
-	if f.format != "auto" && f.format != formatZip && !importer.Format(f.format).IsValid() {
-		return errf("unknown --format %q; one of: auto, %s, zip", f.format, formatNames())
+	// A mapping name is case-sensitive (lowercase only): it is validated as
+	// typed, never lowercased into a name the user did not write.
+	if f.format = strings.TrimSpace(f.format); !strings.HasPrefix(f.format, platform.MappingPrefix) {
+		f.format = strings.ToLower(f.format)
+	}
+	if strings.HasPrefix(f.format, platform.MappingPrefix) {
+		if _, _, err := platform.ParseMapping(f.format); err != nil {
+			return errf("invalid --format: %v", err)
+		}
+	} else if f.format != "auto" && f.format != formatZip && !importer.Format(f.format).IsValid() {
+		return errf("unknown --format %q; one of: auto, %s, zip, or mapping:<name>[@<version>]", f.format, formatNames())
 	}
 	switch f.onUploadError = strings.ToLower(strings.TrimSpace(f.onUploadError)); f.onUploadError {
 	case "":
@@ -220,6 +228,7 @@ func expandPaths(args []string) ([]string, error) {
 // secret scanner's raw report. It reads the file once for its digest.
 func checkFile(path, hint string) (uploadFile, error) {
 	uf := uploadFile{}
+	mapped := strings.HasPrefix(hint, platform.MappingPrefix)
 	fh, err := os.Open(path) // #nosec G304 -- a file the job's own command line names
 	if err != nil {
 		return uf, err
@@ -244,6 +253,16 @@ func checkFile(path, hint string) (uploadFile, error) {
 		return uf, fmt.Errorf("%s: %w", path, err)
 	}
 	head = head[:n]
+	if mapped {
+		// A mapping reads CSV, JSON or XML the importers do not know: the
+		// platform converts the file, so nothing is detected here. An
+		// archive is not a mapping input.
+		if importer.IsZip(head) {
+			return uf, fmt.Errorf("%s: an archive cannot go through a mapping (--format %s)", path, hint)
+		}
+		uf.Mapping = hint
+		return uf.finish(fh, path, st.Size(), hint, "")
+	}
 	format, err := detectFormat(fh, st.Size(), head)
 	if err != nil {
 		return uf, fmt.Errorf("%s: %w", path, err)
@@ -251,6 +270,11 @@ func checkFile(path, hint string) (uploadFile, error) {
 	if hint != "auto" && !sameFormat(hint, format) {
 		return uf, fmt.Errorf("%s: the file is %s, not %s (--format)", path, format, hint)
 	}
+	return uf.finish(fh, path, st.Size(), format, contentType(format))
+}
+
+// finish reads the file once for its digest and fills the upload.
+func (uf uploadFile) finish(fh *os.File, path string, size int64, format, ctype string) (uploadFile, error) {
 	if _, err := fh.Seek(0, io.SeekStart); err != nil {
 		return uf, err
 	}
@@ -259,9 +283,26 @@ func checkFile(path, hint string) (uploadFile, error) {
 		return uf, fmt.Errorf("%s: %w", path, err)
 	}
 	copy(uf.SHA256[:], h.Sum(nil))
-	uf.Path, uf.Size, uf.format = path, st.Size(), format
-	uf.ContentType = contentType(format)
+	uf.Path, uf.Size, uf.format = path, size, format
+	uf.ContentType = ctype
+	if uf.ContentType == "" {
+		uf.ContentType = mappedContentType(path)
+	}
 	return uf, nil
+}
+
+// mappedContentType names the body of a file read through a mapping by
+// its extension; the platform reads the content, not the header.
+func mappedContentType(path string) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".json":
+		return "application/json"
+	case ".xml":
+		return "application/xml"
+	case ".csv":
+		return "text/csv"
+	}
+	return "application/octet-stream"
 }
 
 // detectFormat names the file's format with the importers' own detection;

@@ -9,8 +9,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 )
 
 // Limits of a scanner file sent as-is (UploadFile). They match the
@@ -33,6 +36,40 @@ type File struct {
 	SHA256 [32]byte
 	// ContentType of the request (application/sarif+json for SARIF).
 	ContentType string
+	// Mapping is the saved import mapping the file goes through
+	// ("mapping:<name>[@<version>]"), sent as the format query parameter.
+	// Empty: the platform detects the file's format.
+	Mapping string
+}
+
+var mappingRe = regexp.MustCompile(`^mapping:([a-z0-9][a-z0-9._-]{0,63})(?:@([1-9][0-9]{0,8}))?$`)
+
+// MappingPrefix starts a format value that names a saved import mapping.
+const MappingPrefix = "mapping:"
+
+// ParseMapping checks a format value of the form mapping:<name> or
+// mapping:<name>@<version> (a name of lowercase letters, digits, dot,
+// underscore and hyphen, at most 64 characters; a positive integer
+// version) and returns the mapping's name and version (0 for the current
+// one).
+func ParseMapping(v string) (name string, version int, err error) {
+	m := mappingRe.FindStringSubmatch(v)
+	if m == nil {
+		return "", 0, fmt.Errorf("%q is not mapping:<name>[@<version>]: the name matches [a-z0-9][a-z0-9._-]{0,63}, the version is a positive integer", v)
+	}
+	if m[2] != "" {
+		version, _ = strconv.Atoi(m[2])
+	}
+	return m[1], version, nil
+}
+
+// mappingKeyDigest binds the idempotency digest to the mapping: the same
+// file through another mapping is a different import.
+func mappingKeyDigest(d [32]byte, mapping string) [32]byte {
+	if mapping == "" {
+		return d
+	}
+	return sha256.Sum256(append(append(d[:], 0), mapping...))
 }
 
 // FileReceipt is what the platform did with one file.
@@ -131,7 +168,7 @@ func (r *Run) UploadFile(ctx context.Context, f File) (*FileReceipt, error) {
 	}
 	var out *FileReceipt
 	err := r.onRun(ctx, func(tok, runID string) error {
-		rec, err := r.sendFile(ctx, tok, runPath(runID, "results"), IdempotencyKey(runID, f.SHA256), f)
+		rec, err := r.sendFile(ctx, tok, runPath(runID, "results"), IdempotencyKey(runID, mappingKeyDigest(f.SHA256, f.Mapping)), f)
 		out = rec
 		return err
 	})
@@ -178,7 +215,7 @@ func (r *Run) onceFile(ctx context.Context, tok, path, key string, f File) (*Fil
 	defer cancel()
 	// The body is the file itself, streamed with a known length; the
 	// platform reads at most MaxFileBytes.
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.cfg.APIURL+path, io.LimitReader(fh, f.Size))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.cfg.APIURL+path+mappingQuery(f.Mapping), io.LimitReader(fh, f.Size))
 	if err != nil {
 		return nil, 0, "", err
 	}
@@ -228,4 +265,12 @@ func (r *Run) onceFile(ctx context.Context, tok, path, key string, f File) (*Fil
 		rec.Files = append(rec.Files, rf)
 	}
 	return rec, resp.StatusCode, "", nil
+}
+
+// mappingQuery is the query string that selects a saved import mapping.
+func mappingQuery(mapping string) string {
+	if mapping == "" {
+		return ""
+	}
+	return "?" + url.Values{"format": {mapping}}.Encode()
 }

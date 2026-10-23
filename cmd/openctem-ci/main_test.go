@@ -34,6 +34,8 @@ type fakePlatform struct {
 	rejectUploads bool
 	// uploadKeys are the uploads' Idempotency-Key headers.
 	uploadKeys []string
+	// uploadQueries are the uploads' raw query strings.
+	uploadQueries []string
 	// refuseExchange answers the token exchange 401.
 	refuseExchange bool
 }
@@ -67,6 +69,7 @@ func (f *fakePlatform) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		f.uploads = append(f.uploads, body)
 		f.uploadKeys = append(f.uploadKeys, r.Header.Get("Idempotency-Key"))
+		f.uploadQueries = append(f.uploadQueries, r.URL.RawQuery)
 		if f.known != "" {
 			_, _ = w.Write([]byte(`{"findings_created":1,"known":` + f.known + `}`))
 			return
