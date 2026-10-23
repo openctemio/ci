@@ -79,6 +79,22 @@ OpenCTEM is not shown again:
   carry none. The image smoke test scans the fixture with
   `testdata/rules/taint.yaml` and requires a data flow on both of its flows.
 
+### Asynchronous uploads
+
+- A `202` answer to `POST /api/v1/ci/runs/{id}/results` means stored, with
+  `upload_id`. The job polls `GET /api/v1/ci/runs/{id}/results/{upload_id}?wait=10`
+  with the run token until `status` is `applied` (the answer then carries the
+  counts and decided results the `201` body carried) or `failed` (with a fixed
+  `error_code`), within `OPENCTEM_UPLOAD_TIMEOUT`. The id is checked as a short
+  plain token and the path is built by the job; a location from the reply is
+  never followed.
+- A poll that cannot finish (timeout, 404, errors after the retries) leaves the
+  upload stored with an incomplete list of decided results and zero counts.
+- A `201` from an older platform is read as before.
+- `POST .../evaluate` may answer `503` with code `INGEST_PENDING` while uploads
+  are applied. The job asks again, honouring `Retry-After` (each wait capped at
+  30s), until `OPENCTEM_GATE_WAIT` is used up. Other 503s keep the retry count.
+
 ### Large reports
 
 - **A 2xx reply means stored.** The upload reply is read as a stream, up to

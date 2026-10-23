@@ -97,6 +97,12 @@ type FileReceipt struct {
 	// Files of the request with the format the platform read (an archive
 	// has several).
 	Files []ReceiptFile `json:"files"`
+	// Incomplete: the platform stored the file but its result could not be
+	// read in time; the counts are zero and the platform's verdict still
+	// judges the file.
+	Incomplete bool `json:"incomplete,omitempty"`
+
+	uploadID string // set on a 202: the upload to poll
 }
 
 // ReceiptFile is one file the platform read from a request.
@@ -122,12 +128,20 @@ type fileReply struct {
 			Message string `json:"message"`
 		} `json:"error"`
 	} `json:"files"`
+	// UploadID, Location, Status and ErrorCode: an answer of a platform
+	// that applies the upload after storing it (202, and the poll).
+	UploadID  string `json:"upload_id"`
+	Location  string `json:"location"`
+	Status    string `json:"status"`
+	ErrorCode string `json:"error_code"`
 	// Receipt carries the receipt counts of a platform that reports them.
 	Receipt *struct {
 		Reactivated *int `json:"reactivated"`
 		Closed      *int `json:"closed"`
 	} `json:"receipt"`
 }
+
+func (f *fileReply) pollState() (string, string) { return f.Status, f.ErrorCode }
 
 // maxFileReply bounds the reply to an uploaded file (it lists the files
 // of the request and short errors, never findings).
@@ -174,6 +188,18 @@ func (r *Run) UploadFile(ctx context.Context, f File) (*FileReceipt, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("upload %s: %w", filepath.Base(f.Path), err)
+	}
+	if out.uploadID != "" {
+		var rep fileReply
+		done, err := r.awaitUpload(ctx, out.uploadID, &rep)
+		if err != nil {
+			return nil, fmt.Errorf("upload %s: %w", filepath.Base(f.Path), err)
+		}
+		if !done {
+			out.Incomplete = true
+			return out, nil
+		}
+		out = receiptFrom(rep, out.Replayed)
 	}
 	return out, nil
 }
@@ -240,8 +266,18 @@ func (r *Run) onceFile(ctx context.Context, tok, path, key string, f File) (*Fil
 		// Stored: a 2xx is the platform's word, whatever the body holds.
 		rep = fileReply{}
 	}
+	replayed := resp.Header.Get("Idempotent-Replayed") == "true"
+	if id := uploadRef(rep.UploadID, rep.Location); id != "" && resp.StatusCode == http.StatusAccepted {
+		return &FileReceipt{Replayed: replayed, Files: []ReceiptFile{}, uploadID: id}, resp.StatusCode, "", nil
+	}
+	rec := receiptFrom(rep, replayed)
+	return rec, resp.StatusCode, "", nil
+}
+
+// receiptFrom is the receipt of an applied upload's answer.
+func receiptFrom(rep fileReply, replayed bool) *FileReceipt {
 	rec := &FileReceipt{
-		Replayed:      resp.Header.Get("Idempotent-Replayed") == "true",
+		Replayed:      replayed,
 		New:           rep.FindingsCreated,
 		StillDetected: rep.FindingsUpdated,
 		Skipped:       rep.FindingsSkipped,
@@ -264,7 +300,7 @@ func (r *Run) onceFile(ctx context.Context, tok, path, key string, f File) (*Fil
 		}
 		rec.Files = append(rec.Files, rf)
 	}
-	return rec, resp.StatusCode, "", nil
+	return rec
 }
 
 // mappingQuery is the query string that selects a saved import mapping.

@@ -114,6 +114,16 @@ and replays it for a request with the same key and content, so:
 Retries: `OPENCTEM_RETRIES` (default 3) and `OPENCTEM_UPLOAD_TIMEOUT`
 (default 5 minutes per request) as for `scan`.
 
+The platform stores an upload and answers `202 Accepted` with an upload id;
+the command then waits for it to be applied (a bounded poll on the run, within
+`OPENCTEM_UPLOAD_TIMEOUT`) and prints the receipt as before, so there is still
+one command. An upload the platform cannot apply fails the command and names
+the platform's fixed reason code (for example `unreadable` or
+`report_out_of_scope`). If the wait ends first, the file is stored and the
+receipt is marked incomplete with zero counts; the verdict still judges it.
+With `--gate`, the verdict request waits up to `OPENCTEM_GATE_WAIT` (default
+10 minutes) while the run's uploads are still being applied.
+
 ## Uploads are partial
 
 An upload never closes findings. A finding that a file no longer lists stays
