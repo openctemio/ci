@@ -28,6 +28,20 @@ type asyncServer struct {
 	auth     []string
 }
 
+// count and seen read the recorded requests under the same lock the handler
+// writes them with: the client returns before the server goroutine is done.
+func (s *asyncServer) count(key string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.calls[key]
+}
+
+func (s *asyncServer) seen() (queries, auth []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.queries...), append([]string(nil), s.auth...)
+}
+
 func (s *asyncServer) run(t *testing.T) *Run {
 	t.Helper()
 	s.calls = map[string]int{}
@@ -139,12 +153,13 @@ func TestUploadAcceptedThenPolled(t *testing.T) {
 			if c.wantCreate > 0 && (res.FindingsUpdated != 2 || res.AssetsCreated != 1 || res.AssetsUpdated != 4 || res.Known[0].FindingID != "f1") {
 				t.Fatalf("counts not read from the poll: %+v", res)
 			}
-			if s.calls["poll"] == 0 || (c.polls > 0 && s.calls["poll"] != c.polls) {
-				t.Fatalf("polls %d, want %d", s.calls["poll"], c.polls)
+			if s.count("poll") == 0 || (c.polls > 0 && s.count("poll") != c.polls) {
+				t.Fatalf("polls %d, want %d", s.count("poll"), c.polls)
 			}
-			for i := range s.queries {
-				if s.queries[i] != "wait=10" || s.auth[i] != "Bearer "+runToken {
-					t.Fatalf("poll %d: query %q auth %q", i, s.queries[i], s.auth[i])
+			queries, auth := s.seen()
+			for i := range queries {
+				if queries[i] != "wait=10" || auth[i] != "Bearer "+runToken {
+					t.Fatalf("poll %d: query %q auth %q", i, queries[i], auth[i])
 				}
 			}
 		})
@@ -158,8 +173,8 @@ func TestUploadCreatedAnswerStillWorks(t *testing.T) {
 	}, poll: func(int) (int, string) { return 500, "" }}
 	r := s.run(t)
 	res, err := r.Upload(context.Background(), reportWith(2))
-	if err != nil || res.FindingsCreated != 5 || len(res.Known) != 1 || res.KnownIncomplete || s.calls["poll"] != 0 {
-		t.Fatalf("%+v %v polls %d", res, err, s.calls["poll"])
+	if err != nil || res.FindingsCreated != 5 || len(res.Known) != 1 || res.KnownIncomplete || s.count("poll") != 0 {
+		t.Fatalf("%+v %v polls %d", res, err, s.count("poll"))
 	}
 }
 
@@ -271,8 +286,8 @@ func TestEvaluateWaitsForPendingUploads(t *testing.T) {
 			if (err != nil) != c.wantErr || (err == nil && v.Verdict != "pass") {
 				t.Fatalf("%v %v", v, err)
 			}
-			if s.calls["evaluate"] != c.wantCalls {
-				t.Fatalf("calls %d, want %d", s.calls["evaluate"], c.wantCalls)
+			if s.count("evaluate") != c.wantCalls {
+				t.Fatalf("calls %d, want %d", s.count("evaluate"), c.wantCalls)
 			}
 			if c.wantWaits != nil {
 				got := takeWaits()
