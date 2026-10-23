@@ -235,3 +235,48 @@ func TestUploadFileReadsReceiptCounts(t *testing.T) {
 		t.Errorf("files %+v: a file the platform could not read fails, its message sanitized", rec.Files)
 	}
 }
+
+func TestParseMapping(t *testing.T) {
+	for _, c := range []struct {
+		in      string
+		name    string
+		version int
+		ok      bool
+	}{
+		{"mapping:acme", "acme", 0, true},
+		{"mapping:a", "a", 0, true},
+		{"mapping:a.b_c-d@7", "a.b_c-d", 7, true},
+		{"mapping:" + strings.Repeat("a", 64), strings.Repeat("a", 64), 0, true},
+		{"mapping:" + strings.Repeat("a", 65), "", 0, false},
+		{"mapping:", "", 0, false},
+		{"mapping:Acme", "", 0, false},
+		{"mapping:.a", "", 0, false},
+		{"mapping:a@0", "", 0, false},
+		{"mapping:a@01", "", 0, false},
+		{"mapping:a@", "", 0, false},
+		{"mapping:a@1x", "", 0, false},
+		{"sarif", "", 0, false},
+		{"mapping:a\n", "", 0, false},
+	} {
+		name, ver, err := ParseMapping(c.in)
+		if (err == nil) != c.ok || name != c.name || ver != c.version {
+			t.Errorf("%q: got (%q, %d, %v)", c.in, name, ver, err)
+		}
+	}
+}
+
+func TestUploadFileThroughAMappingSendsTheFormatQueryAndAnotherKey(t *testing.T) {
+	s := &fileServer{}
+	r := s.run(t)
+	f := writeFile(t, sarifDoc)
+	f.Mapping = "mapping:acme@2"
+	if _, err := r.UploadFile(context.Background(), f); err != nil {
+		t.Fatal(err)
+	}
+	if s.queries[0] != "format=mapping%3Aacme%402" {
+		t.Errorf("query %q", s.queries[0])
+	}
+	if s.keys[0] == IdempotencyKey("run-7", f.SHA256) {
+		t.Error("the key must depend on the mapping")
+	}
+}

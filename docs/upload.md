@@ -45,11 +45,36 @@ The formats are those of the importers: `csaf`, `cyclonedx`, `defectdojo`,
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--format` | `auto` | the format every file must have; `auto` detects each file. A file of another format fails the command (catches a wrong path before it reaches OpenCTEM) |
+| `--format` | `auto` | the format every file must have; `auto` detects each file. A file of another format fails the command (catches a wrong path before it reaches OpenCTEM). `mapping:<name>[@<version>]` reads every file through a saved import mapping ([below](#files-through-an-import-mapping)) |
 | `--gate` | `false` | ask the platform's gate for the run's verdict after the upload |
 | `--aggregate` | `false` | upload into the run shared by all jobs of the pipeline; the pipeline's final `openctem-ci gate` job judges everything in it. Not with `--gate` |
 | `--receipt` | | write the receipt as JSON to this file |
 | `--on-upload-error` | `$OPENCTEM_ON_UPLOAD_ERROR`, else `fail` | `fail` (exit 2) or `warn` (exit 0 with a warning) when a file is not stored in full |
+
+### Files through an import mapping
+
+A CSV, JSON or XML file that none of the formats above covers (an export of
+an in-house tool, a spreadsheet) is read by an import mapping saved in your
+OpenCTEM organization:
+
+```sh
+openctem-ci upload --format mapping:acme-scan scan-export.csv
+openctem-ci upload --format mapping:acme-scan@3 scan-export.csv   # version 3 of the mapping
+```
+
+- The name matches `[a-z0-9][a-z0-9._-]{0,63}` and the version is a positive
+  integer; anything else fails the command before a request is sent. The
+  name is case-sensitive. Without a version, the mapping's current version
+  is used.
+- The command does not detect the file's format: the mapping reads the
+  content. An unknown mapping is answered with `unknown_mapping` (the
+  file is reported as not stored).
+- A ZIP cannot go through a mapping; send one file per upload.
+- A mapped upload is always partial coverage, like every upload: it never
+  closes findings. The platform records the source as `mapped:<name>`.
+- The same file through another mapping (or version) is a separate import:
+  the idempotency key covers the mapping as well as the file.
+- Needs an OpenCTEM release with import mappings.
 
 Every file is checked before anything is sent: an unknown format, a file
 over the size limit or too many files fail the command and upload nothing.
