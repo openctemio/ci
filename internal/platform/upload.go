@@ -135,6 +135,26 @@ func (u *uploader) send(ctx context.Context, p part) error {
 		return err
 	}
 	u.out.Parts++
+	// A 202 stored the part; the counts and the decided results come from
+	// the poll. When the poll cannot finish, the part stays stored with an
+	// incomplete list of decided results.
+	if id := uploadRef(reply.uploadID, reply.location); id != "" || reply.status == "queued" {
+		done := false
+		if id != "" {
+			polled := &uploadReply{n: len(p.report.Findings)}
+			var perr error
+			if done, perr = u.r.awaitUpload(ctx, id, polled); perr != nil {
+				return perr
+			}
+			if done {
+				reply = polled
+			}
+		}
+		if !done {
+			u.out.KnownIncomplete = true
+			return nil
+		}
+	}
 	u.out.FindingsCreated += reply.res.FindingsCreated
 	u.out.FindingsUpdated += reply.res.FindingsUpdated
 	u.out.AssetsCreated += reply.res.AssetsCreated
@@ -267,7 +287,12 @@ type uploadReply struct {
 	known      []Known
 	next       string
 	incomplete bool
+	// uploadID, location, status and errorCode: an answer of a platform
+	// that applies the upload after storing it (202, and the poll).
+	uploadID, location, status, errorCode string
 }
+
+func (u *uploadReply) pollState() (string, string) { return u.status, u.errorCode }
 
 func (u *uploadReply) maxReplyBytes() int64 {
 	return min(int64(replyBase)+int64(u.n)*replyPerFinding, maxReply)
@@ -317,6 +342,14 @@ func (u *uploadReply) walk(dec *json.Decoder) (truncated bool, err error) {
 			}
 		case "known_truncated":
 			err = dec.Decode(&truncated)
+		case "upload_id":
+			err = dec.Decode(&u.uploadID)
+		case "location":
+			err = dec.Decode(&u.location)
+		case "status":
+			err = dec.Decode(&u.status)
+		case "error_code":
+			err = dec.Decode(&u.errorCode)
 		default:
 			var skip json.RawMessage
 			err = dec.Decode(&skip)

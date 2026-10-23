@@ -121,6 +121,9 @@ type Config struct {
 	// Retries is how often a request is repeated after a transient failure
 	// (default 3; negative: never). See retryable for what is transient.
 	Retries int
+	// GateWait is the total wait at evaluate for the run's uploads to be
+	// applied by the platform (default 10m; negative: do not wait).
+	GateWait time.Duration
 	// Getenv reads the environment.
 	Getenv func(string) string
 }
@@ -140,6 +143,13 @@ func ConfigFromEnv(getenv func(string) string) Config {
 	if d, err := time.ParseDuration(strings.TrimSpace(getenv(EnvUploadTimeout))); err == nil && d >= 10*time.Second && d <= time.Hour {
 		c.UploadTimeout = d
 	}
+	// OPENCTEM_GATE_WAIT: a Go duration or seconds, 0 to 60m.
+	if d, ok := parseGateWait(getenv(EnvGateWait)); ok {
+		c.GateWait = d
+		if d == 0 {
+			c.GateWait = -1
+		}
+	}
 	return c
 }
 
@@ -147,6 +157,7 @@ func ConfigFromEnv(getenv func(string) string) Config {
 const (
 	EnvRetries       = "OPENCTEM_RETRIES"
 	EnvUploadTimeout = "OPENCTEM_UPLOAD_TIMEOUT"
+	EnvGateWait      = "OPENCTEM_GATE_WAIT"
 )
 
 func (c *Config) normalize() {
@@ -519,7 +530,9 @@ func (r *Run) azureToken(ctx context.Context) (string, error) {
 // StatusError is an HTTP error from the platform: the status and the
 // platform's message only.
 type StatusError struct {
-	Status  int
+	Status int
+	// Code is the platform's fixed error code, when it sent one.
+	Code    string
 	Message string
 }
 
@@ -614,8 +627,25 @@ func (r *Run) do(ctx context.Context, kind requestKind, bearer, path string, bod
 	if kind == kindUpload {
 		timeout = r.cfg.UploadTimeout
 	}
+	// While the platform still applies the run's uploads, the verdict
+	// request is asked again within the gate wait budget (the requests
+	// and the waits count); that wait is separate from the retries.
+	budget, spent := r.cfg.gateWait(), time.Duration(0)
 	for attempt := 1; ; attempt++ {
+		began := time.Now()
 		status, retryAfter, err := r.once(ctx, timeout, bearer, path, b, encoding, out)
+		if kind == kindEvaluate && isIngestPending(err) {
+			wait := gateRetryWait(retryAfter)
+			spent += time.Since(began) + wait
+			if spent > budget {
+				return err
+			}
+			if serr := sleep(ctx, wait); serr != nil {
+				return err
+			}
+			attempt--
+			continue
+		}
 		if err == nil || attempt > r.cfg.Retries || !retryable(kind, status, transportErr(status, err)) {
 			return err
 		}
@@ -686,7 +716,7 @@ func replyError(resp *http.Response) error {
 	if e.Code != "" && msg != "" {
 		msg = e.Code + ": " + msg
 	}
-	return &StatusError{Status: resp.StatusCode, Message: Sanitize(msg)}
+	return &StatusError{Status: resp.StatusCode, Code: cut(Sanitize(e.Code), maxLabel), Message: Sanitize(msg)}
 }
 
 // call runs an authenticated request on the run.
