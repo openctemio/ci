@@ -657,18 +657,8 @@ func (r *Run) once(ctx context.Context, timeout time.Duration, bearer, path stri
 		return 0, "", scrubURL(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		raw, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrBody))
-		var e struct {
-			Message string `json:"message"`
-			Code    string `json:"code"`
-		}
-		_ = json.Unmarshal(raw, &e)
-		msg := e.Message
-		if e.Code != "" && msg != "" {
-			msg = e.Code + ": " + msg
-		}
-		return resp.StatusCode, resp.Header.Get("Retry-After"), &StatusError{Status: resp.StatusCode, Message: Sanitize(msg)}
+	if err := replyError(resp); err != nil {
+		return resp.StatusCode, resp.Header.Get("Retry-After"), err
 	}
 	if out == nil {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxErrBody))
@@ -680,17 +670,50 @@ func (r *Run) once(ctx context.Context, timeout time.Duration, bearer, path stri
 	return resp.StatusCode, "", json.NewDecoder(io.LimitReader(resp.Body, maxBody)).Decode(out)
 }
 
+// replyError is the StatusError of a non-2xx reply (the platform's code and
+// message only, sanitized); nil for a 2xx reply.
+func replyError(resp *http.Response) error {
+	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
+		return nil
+	}
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrBody))
+	var e struct {
+		Message string `json:"message"`
+		Code    string `json:"code"`
+	}
+	_ = json.Unmarshal(raw, &e)
+	msg := e.Message
+	if e.Code != "" && msg != "" {
+		msg = e.Code + ": " + msg
+	}
+	return &StatusError{Status: resp.StatusCode, Message: Sanitize(msg)}
+}
+
 // call runs an authenticated request on the run.
 func (r *Run) call(ctx context.Context, kind requestKind, action string, body, out any) error {
+	return r.onRun(ctx, func(tok, runID string) error {
+		return r.do(ctx, kind, tok, runPath(runID, action), body, out)
+	})
+}
+
+func runPath(runID, action string) string {
+	return "/api/v1/ci/runs/" + url.PathEscape(runID) + "/" + action
+}
+
+// onRun sends one authenticated request with the run token and the run's
+// id. When the token came from the job's cache and the platform no longer
+// takes it, the cache is forgotten and the request is sent once more after
+// this job's own exchange (which may name another run, so send gets the id
+// again).
+func (r *Run) onRun(ctx context.Context, send func(tok, runID string) error) error {
 	tok, err := r.bearer(ctx)
 	if err != nil {
 		return err
 	}
 	r.mu.Lock()
-	path := "/api/v1/ci/runs/" + url.PathEscape(r.runID) + "/" + action
-	fromCache := r.fromCache
+	runID, fromCache := r.runID, r.fromCache
 	r.mu.Unlock()
-	err = r.do(ctx, kind, tok, path, body, out)
+	err = send(tok, runID)
 	var se *StatusError
 	if fromCache && errors.As(err, &se) && se.Status == http.StatusUnauthorized {
 		// A run token another step left behind that the platform no longer
@@ -703,9 +726,9 @@ func (r *Run) call(ctx context.Context, kind requestKind, action string, body, o
 			return err
 		}
 		r.mu.Lock()
-		path = "/api/v1/ci/runs/" + url.PathEscape(r.runID) + "/" + action
+		runID = r.runID
 		r.mu.Unlock()
-		err = r.do(ctx, kind, tok, path, body, out)
+		err = send(tok, runID)
 	}
 	return err
 }

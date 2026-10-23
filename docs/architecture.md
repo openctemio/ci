@@ -27,6 +27,30 @@ CI job ── checkout ──▶ openctem-ci scan --capability sast
                          └ 9. ask the platform gate for the verdict (or the local gate)
 ```
 
+## Flow of `openctem-ci upload`
+
+```
+CI job ── its own scanners ──▶ openctem-ci upload [--gate] reports/trivy.json reports/zap.xml
+                                 │ 1. check every file before anything is sent: a regular file, at most
+                                 │    50 MiB, at most 50 files, a format ctis/importer detects (a ZIP is
+                                 │    checked file by file), not a secret scanner's raw report; SHA-256
+                                 │ 2. exchange the job's OIDC token for a run token (as scan)
+                                 │ 3. send each file as-is to POST /ci/runs/{id}/results, streamed from
+                                 │    disk, with Idempotency-Key = ocu1-SHA-256(run id, file digest)
+                                 │ 4. print the receipt per file (new, still detected, resolved, reopened,
+                                 │    skipped, failed); a file not stored fails the job (exit 2)
+                                 └ 5. --gate: ask the platform gate, counting files not stored as failures
+```
+
+The platform converts the file with the same importers as the console, files
+code findings on the run's repository and drops (and counts) anything on
+another asset; the branch and commit are the run's. The key makes a retried
+request, a repeated step or a retried job that joins the same aggregate run
+replay the first answer instead of importing again (the platform keeps it
+for an hour, scoped to the organization and the run). An upload never
+declares coverage, so it never closes findings. User guide:
+[upload.md](upload.md).
+
 ### Known false positives
 
 A false positive, duplicate, accepted risk or approved exception decided in
@@ -239,6 +263,10 @@ A platform that does not answer `aggregate: true` is refused
 | Platform or scanner text forges CI log lines | Control characters and `::` workflow-command prefixes are removed before printing |
 | A pull request changes scanner configuration committed in the tree to hide its own findings (a `trivy.yaml` severity threshold, a `.trivyignore`, a `.gitleaks.toml` allowlist, a `.betterleaksignore`) | Those files are not read: trivy runs with `--config ""` and `--ignorefile ""`, betterleaks with its built-in rules (unless the pipeline sets `BETTERLEAKS_CONFIG*`) and an ignore path outside the tree; configuration comes from the pipeline, exceptions are requested in `.openctem.yml` and approved in OpenCTEM. SAST runs with `--disable-nosem` and `--x-ignore-semgrepignore-files`: results under an inline ignore comment are reported (marked as in-source claims) and `.semgrepignore` patterns are sent as claims; OpenCTEM turns a default-branch run's claims into pending requests, and the gate counts the results until one is approved |
 | A pull request commits a trivy cache directory (a database whose metadata says "fresh", or a checks bundle) so that sca, iac and container scans use it and find nothing | trivy's cache lives outside the checkout (the image's `/home/openctem/.cache/trivy`; the GitLab templates no longer cache it in the tree and no longer skip a fixed directory). `openctem-ci` refuses to run trivy when the effective cache directory (`TRIVY_CACHE_DIR`, `$XDG_CACHE_HOME/trivy`, `$HOME/.cache/trivy`, symbolic links resolved) is inside the checkout: the scan fails with exit 2 and nothing is uploaded, so the run fails rather than looking clean |
+| `upload` sends a secret scanner's report, and every raw secret with it | gitleaks and betterleaks reports (and ZIPs holding one) are refused before anything is sent; secrets go up only through `scan --capability secrets` |
+| `upload` imports one report twice after a lost answer or a job retry | Each file carries `Idempotency-Key` from the run id and the file's SHA-256; the platform replays the first answer, refuses the key with another body (422) and answers 409 with `Retry-After` while the first request runs |
+| `upload` closes findings a partial report did not list | It never declares coverage; a CI upload never closes findings |
+| `upload` exhausts the runner's memory or the platform's limits | Size (50 MiB) and count (50) checked before anything is sent; the file is streamed with its length; the reply is read up to 1 MiB |
 | Option injection through user input | Fixed argument lists, no shell; image references and sast rules that start with `-` are refused |
 | A broken scan turns the pipeline green | Every failure exits 2 and is recorded as a scan failure on the run; the gate job counts missing statuses |
 
