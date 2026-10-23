@@ -84,3 +84,22 @@ When it still fails:
   (`Uploaded the <capability> results its job could not upload`);
 - a job that is its own gate fails (exit 2) unless `--fail-on` lets the
   local gate decide, or `--on-upload-error warn` is set.
+
+## Upload
+
+- `unknown format` (exit 2): `openctem-ci upload` reads only the formats of
+  the importers (the message lists them). A CTIS report goes up with
+  `openctem-ci scan`.
+- `the file is sarif, not trivy (--format)` (exit 2): `--format` names the
+  format every file must have; drop it to detect each file.
+- `larger than the 50.0 MiB the platform accepts per file` (exit 2): split
+  the report (one file per target or per scan).
+- `holds the raw value of every secret` (exit 2): secret scanner reports are
+  not uploaded; run `openctem-ci scan --capability secrets`.
+- `already uploaded to this run` in the receipt: the same file reached the
+  same run before; the platform answered from the first import.
+- Status 422 `IDEMPOTENCY_KEY_REUSED`: another body was sent with a key
+  already used in this run; `openctem-ci` derives the key from the file's
+  content, so this means the file changed while it was being sent.
+
+Details: [upload.md](upload.md).

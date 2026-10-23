@@ -32,6 +32,10 @@ type fakePlatform struct {
 	known string
 	// rejectUploads answers every upload 400 (a failed upload).
 	rejectUploads bool
+	// uploadKeys are the uploads' Idempotency-Key headers.
+	uploadKeys []string
+	// refuseExchange answers the token exchange 401.
+	refuseExchange bool
 }
 
 func (f *fakePlatform) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -43,6 +47,11 @@ func (f *fakePlatform) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var m map[string]any
 		_ = json.Unmarshal(body, &m)
 		f.exchanges = append(f.exchanges, m)
+		if f.refuseExchange {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"code":"CI_TOKEN_NOT_TRUSTED","message":"no trust configuration admits this job"}`))
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"run_id": "run-1", "token": "octci_test", "aggregate": m["aggregate"] == true,
 			"expires_at": time.Now().Add(15 * time.Minute), "repository": "gitlab.com/acme/app", "commit_sha": "c0ffee",
 			"secret_key": "a2V5LWtleS1rZXkta2V5LWtleS1rZXkta2V5LWtleS0="})
@@ -57,6 +66,7 @@ func (f *fakePlatform) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		f.uploads = append(f.uploads, body)
+		f.uploadKeys = append(f.uploadKeys, r.Header.Get("Idempotency-Key"))
 		if f.known != "" {
 			_, _ = w.Write([]byte(`{"findings_created":1,"known":` + f.known + `}`))
 			return

@@ -4,12 +4,13 @@
 //
 //	openctem-ci scan --capability sast [--sarif out.sarif] [--gitlab-report gl-sast-report.json]
 //	openctem-ci gate --status-dir statuses --expect sast,sca,secrets
+//	openctem-ci upload [--format sarif] [--gate] trivy.json zap.xml
 //	openctem-ci capabilities
 //	openctem-ci version
 //
 // Exit codes: 0 the gate passed (or no gate was asked), 1 the gate failed,
 // 2 the scan could not be trusted (a tool, parse, upload or configuration
-// error).
+// error; for upload: a file was not stored, or the run could not be opened).
 package main
 
 import (
@@ -48,6 +49,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, getenv fu
 		return cmdScan(ctx, args[1:], stdout, stderr, e)
 	case "gate":
 		return cmdGate(ctx, args[1:], stdout, stderr, e)
+	case "upload":
+		return cmdUpload(ctx, args[1:], stdout, stderr, e)
 	case "capabilities":
 		return cmdCapabilities(args[1:], stdout, stderr)
 	case "version", "--version", "-version":
@@ -68,6 +71,7 @@ func usage(w io.Writer) {
 Commands:
   scan          run a capability, write SARIF / GitLab reports, upload to OpenCTEM, gate
   gate          judge the results of several capability jobs (the final job of a pipeline)
+  upload        upload scanner reports the pipeline already has (SARIF, trivy, ZAP, ...) to the job's run
   capabilities  list the capabilities, their tools and images
   version       print the version
 
@@ -86,6 +90,6 @@ $(System.AccessToken)), Bitbucket Pipelines (oidc: true), CircleCI
 (circleci run oidc get into OPENCTEM_ID_TOKEN), Jenkins (the OpenID Connect
 Provider plugin's credential bound to OPENCTEM_ID_TOKEN).
 
-Exit codes: 0 pass, 1 the gate failed, 2 error (the scan is not trusted).
+Exit codes: 0 pass, 1 the gate failed, 2 error (the scan or upload is not trusted).
 `)
 }

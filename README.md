@@ -32,8 +32,10 @@ openctem-ci scan --capability sast \
 ```
 
 Commands: `scan` (run one capability), `gate` (judge the status files of
-several capability jobs, the final job of a pipeline), `capabilities` (list
-the capabilities, their tools and images) and `version`.
+several capability jobs, the final job of a pipeline), `upload` (send
+scanner reports the pipeline already has, such as SARIF, trivy or ZAP, to
+the job's run; [docs/upload.md](docs/upload.md)), `capabilities` (list the
+capabilities, their tools and images) and `version`.
 `openctem-ci <command> -h` prints the flags of a command.
 
 `scan` flags:
@@ -94,6 +96,7 @@ and later only.
 Design, identity and threat model: [docs/architecture.md](docs/architecture.md).
 Repository gate settings: [docs/repository-file.md](docs/repository-file.md).
 
+- Upload reports from your own scanners: [docs/upload.md](docs/upload.md)
 - GitHub Actions: [docs/github.md](docs/github.md)
 - GitLab CI: [docs/gitlab.md](docs/gitlab.md)
 - Images, signatures and SBOMs: [docs/images.md](docs/images.md)
