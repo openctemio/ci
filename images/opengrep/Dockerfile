@@ -10,7 +10,7 @@
 # installed. No Python and no package installer in the image. Base images
 # are pinned by digest (Dependabot docker).
 
-FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS build
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27-alpine@sha256:b8c9b82affbbb82a020bbcf998dad2ba9516944ac7e883524642a481a9505e9c AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
@@ -23,9 +23,9 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags="-s -w -X main.Version=${VERSION}" -o /out/openctem-ci ./cmd/openctem-ci
 
-FROM ghcr.io/sigstore/cosign/cosign:v3.1.3@sha256:9e5c2f2edc34351160407ca3416c61855bdf9403c3c5936e0f0be7fc261611b8 AS cosign
+FROM ghcr.io/sigstore/cosign/cosign:v3.1.4@sha256:0f06154836d2de34f887a5c273506d52ca43edaa1d9e53e6510fa78a48f69c2d AS cosign
 
-FROM docker.io/library/alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS opengrep
+FROM docker.io/library/alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS opengrep
 ARG TARGETARCH
 ARG OPENGREP_VERSION=1.31.0
 ARG OPENGREP_SHA256_AMD64=02c9fba481611aa0664bc79ccf7ce59e9e334b76af8921c80b2f738d17fabf9b
@@ -57,7 +57,7 @@ RUN case "${TARGETARCH}" in \
 # The OpenCTEM rules pack (github.com/openctemio/sast-rules): a release
 # bundle whose cosign keyless signature must verify for the pack's release
 # workflow at exactly this tag. It is the image's default sast rules.
-FROM docker.io/library/alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS rules
+FROM docker.io/library/alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS rules
 ARG SAST_RULES_VERSION=0.1.0
 ARG SAST_RULES_SHA256=6bcd18f7d6f65fbbccc0d965a86010e10da7d8f9e217a39597fe52e3fef4df6d
 COPY --from=cosign /ko-app/cosign /usr/local/bin/cosign
@@ -78,7 +78,7 @@ RUN f="sast-rules-${SAST_RULES_VERSION}.tar.gz"; \
     grep -qx "${SAST_RULES_VERSION}" /opt/openctem/sast-rules/VERSION; \
     chmod -R a+rX,go-w /opt/openctem/sast-rules
 
-FROM docker.io/library/alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+FROM docker.io/library/alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
 LABEL org.opencontainers.image.title="openctem-ci-opengrep" \
       org.opencontainers.image.description="OpenCTEM CI scanning: opengrep (sast) and openctem-ci" \
       org.opencontainers.image.source="https://github.com/openctemio/ci" \
