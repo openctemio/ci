@@ -19,6 +19,7 @@ export GIT_CONFIG_COUNT=4 \
   GIT_CONFIG_KEY_3=gc.autoDetach GIT_CONFIG_VALUE_3=false
 work=$(mktemp -d)
 # Cleanup never changes the exit status: the real result of the checks is kept.
+# shellcheck disable=SC2329 # invoked by the EXIT trap below
 cleanup() {
   local rc=$?
   rm -rf -- "${work:?}" 2>/dev/null || { sleep 1; rm -rf -- "${work:?}" 2>/dev/null; } || true
