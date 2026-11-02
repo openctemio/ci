@@ -1,6 +1,6 @@
 module github.com/openctemio/ci
 
-go 1.26.0
+go 1.27.0
 
 require (
 	github.com/openctemio/ctis v1.6.1
