@@ -10,13 +10,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/openctemio/ctis"
-	"github.com/openctemio/ctis/importer"
+	"github.com/openctemio/ctis/v2"
+	"github.com/openctemio/ctis/v2/fingerprint"
+	"github.com/openctemio/ctis/v2/importer"
 
 	"github.com/openctemio/ci/internal/capability"
 	"github.com/openctemio/ci/internal/ciinfo"
@@ -30,7 +31,6 @@ import (
 	"github.com/openctemio/ci/internal/sarif"
 	"github.com/openctemio/ci/internal/scanner"
 	"github.com/openctemio/ci/internal/scope"
-	"github.com/openctemio/ci/internal/secrethash"
 )
 
 type scanFlags struct {
@@ -195,14 +195,15 @@ func (s *scanJob) run(ctx context.Context) int {
 	}
 
 	known := redact.RawSecrets(res.Format, res.Output)
-	report, err := s.convert(ctx, res, known, targetAbs, targetRel)
-	if err == nil && s.pr != nil && secrethash.Applies(res.Format) {
-		// Each secret goes up as a keyed hash of its raw value (the key comes
-		// with the run); the value itself never does.
-		if n := secrethash.Apply(report, res.Format, res.Output, s.pr.SecretKey(ctx)); n > 0 {
-			s.logf("[%s] %d secret(s) identified by a keyed hash; no secret value is sent", s.c.Name, n)
-		}
+	// Secrets are fingerprinted from an HMAC under the key the platform
+	// hands the run (per organization and repository): the raw value and the
+	// key never enter the report, and without a key the report carries no
+	// secret fingerprint at all (there is no unsalted path).
+	var secretKey []byte
+	if s.pr != nil && secretFormat(res.Format) {
+		secretKey = s.pr.SecretKey(ctx)
 	}
+	report, err := s.convert(ctx, res, secretKey, known, targetAbs, targetRel)
 	res.Output = nil // the raw output may hold secrets: drop it now
 	if err != nil {
 		if toolErr != nil {
@@ -326,11 +327,18 @@ func (s *scanJob) openRun() error {
 	return nil
 }
 
-func (s *scanJob) convert(ctx context.Context, res *scanner.Result, known []string, targetAbs, targetRel string) (*ctis.Report, error) {
-	out, err := importer.Parse(ctx, bytes.NewReader(res.Output), importer.Options{
-		Format: res.Format, ToolName: res.Tool, SourceType: "ci",
-		Repository: s.info.Repository, Branch: s.info.Branch, CommitSHA: s.info.Commit,
-	})
+func (s *scanJob) convert(ctx context.Context, res *scanner.Result, secretKey []byte, known []string, targetAbs, targetRel string) (*ctis.Report, error) {
+	if len(secretKey) < fingerprint.MinSecretKeyBytes {
+		secretKey = nil // too short to be a key: no fingerprint rather than a weak one
+	}
+	opts := importer.Options{Format: res.Format, ToolName: res.Tool, Channel: ctis.ChannelScanner, SecretKey: secretKey}
+	if s.c.Target == capability.TargetRepository {
+		opts.Repository, opts.Branch, opts.CommitSHA = s.info.Repository, s.info.Branch, s.info.Commit
+	}
+	// An image scan names no repository to the importer: it files the
+	// findings on the scanned image, with the registry digest trivy reports
+	// (scope.Apply then keeps the image asset only when its digest is known).
+	out, err := importer.Parse(ctx, bytes.NewReader(res.Output), opts)
 	if err != nil {
 		return nil, fmt.Errorf("read the %s report: %w", res.Tool, err)
 	}
@@ -338,15 +346,6 @@ func (s *scanJob) convert(ctx context.Context, res *scanner.Result, known []stri
 		s.warnf("[%s] %s", res.Tool, platform.Sanitize(is.String()))
 	}
 	r := out.Report
-	imageOS, imageDigest := "", ""
-	for _, a := range r.Assets {
-		if v, ok := a.Properties["os"].(string); ok && v != "" && imageOS == "" {
-			imageOS = v
-		}
-		if v, ok := a.Properties["repo_digest"].(string); ok && imageDigest == "" {
-			imageDigest = ImageDigest(v)
-		}
-	}
 	if res.Format == importer.FormatTrivy && s.c.Target == capability.TargetRepository {
 		locateTrivyTargets(r)
 	}
@@ -356,7 +355,7 @@ func (s *scanJob) convert(ctx context.Context, res *scanner.Result, known []stri
 		}
 	}
 	st := scope.Apply(r, scope.Options{Repository: s.info.Repository, TargetRel: targetRel, TargetAbs: targetAbs,
-		RepositoryPaths: s.c.Target == capability.TargetRepository})
+		RepositoryPaths: s.c.Target == capability.TargetRepository, Image: strings.TrimSpace(s.f.image)})
 	if st.PathsCleared > 0 {
 		s.warnf("%d file path(s) pointed outside the repository and were removed", st.PathsCleared)
 	}
@@ -370,16 +369,8 @@ func (s *scanJob) convert(ctx context.Context, res *scanner.Result, known []stri
 		if n := claims.MarkInline(r, s.info.Workspace); n > 0 {
 			s.logf("[%s] %d result(s) carry an inline ignore comment: reported anyway; OpenCTEM asks for a review", s.c.Name, n)
 		}
-		if pats := claims.IgnorePatterns(s.info.Workspace); len(pats) > 0 {
-			list := make([]any, 0, len(pats))
-			for _, p := range pats {
-				list = append(list, p)
-			}
-			if r.Metadata.Properties == nil {
-				r.Metadata.Properties = ctis.Properties{}
-			}
-			r.Metadata.Properties[claims.Property] = list
-			s.logf("[%s] %s is not applied: its %d pattern(s) go to OpenCTEM as requests", s.c.Name, claims.IgnoreFile, len(pats))
+		if n := claims.SetIgnorePatterns(r, claims.IgnorePatterns(s.info.Workspace)); n > 0 {
+			s.logf("[%s] %s is not applied: its %d pattern(s) go to OpenCTEM as requests", s.c.Name, claims.IgnoreFile, n)
 		}
 	}
 
@@ -389,37 +380,32 @@ func (s *scanJob) convert(ctx context.Context, res *scanner.Result, known []stri
 	if r.Tool.Version == "" {
 		r.Tool.Version = res.Version
 	}
-	// The capability goes in metadata.properties: a receiver still on CTIS
-	// 1.4 refuses the metadata.capability member (unknown fields are
-	// refused), while properties are open.
-	r.Metadata.Capability = ""
-	if r.Metadata.Properties == nil {
-		r.Metadata.Properties = ctis.Properties{}
-	}
-	r.Metadata.Properties["capability"] = s.c.ID
-	r.Metadata.SourceType = "ci"
+	// The capability this job implements: a hint the platform reads from
+	// the io.openctem extension (it files the report under the capability of
+	// the run it is bound to, never under this value alone).
+	r.Metadata.Extensions.Set(ctis.OpenCTEMNamespace, "capability", s.c.ID)
+	r.Metadata.Channel = ctis.ChannelScanner
 	r.Metadata.DurationMs = int(res.Duration.Milliseconds())
+	// The job ran one capability: a tool that does several (trivy) claims
+	// only the technique of the one this report answers.
+	if t := techniques(s.c.Name); t != nil {
+		r.Tool.Techniques = t
+	}
 	if s.info.Branch != "" {
 		r.Metadata.Branch = &ctis.BranchInfo{Name: s.info.Branch, CommitSHA: s.info.Commit, BaseBranch: s.info.TargetBranch,
 			IsDefaultBranch: s.info.PullRequest == "" && s.info.DefaultBranch != "" && s.info.Branch == s.info.DefaultBranch}
 	}
 	// Full coverage (which lets the platform resolve findings no longer
 	// reported) only for a whole-repository scan of the default branch;
-	// anything else is partial (fail safe).
-	r.Metadata.CoverageType = "partial"
+	// anything else is partial (fail safe). The repository is the target
+	// that ended done.
+	r.Metadata.CoverageType = ctis.CoveragePartial
 	if r.Metadata.Branch != nil && r.Metadata.Branch.IsDefaultBranch && targetRel == "." && s.c.Target == capability.TargetRepository {
-		r.Metadata.CoverageType = "full"
+		r.Metadata.CoverageType = ctis.CoverageFull
 	}
-	if s.c.Target == capability.TargetImage {
-		r.Metadata.Properties["container_image"] = strings.TrimSpace(s.f.image)
-		if imageOS != "" {
-			r.Metadata.Properties["image_os"] = imageOS
-		}
-		// The image's content digest lets OpenCTEM link the repository to
-		// the workloads that run this exact image.
-		if imageDigest != "" {
-			r.Metadata.Properties["image_digest"] = imageDigest
-		}
+	setTarget(r, ctis.TargetDone, "")
+	if err := r.Validate(); err != nil {
+		return nil, fmt.Errorf("the %s report is not valid CTIS %s: %w", res.Tool, ctis.SchemaVersion, err)
 	}
 	return r, nil
 }
@@ -547,8 +533,15 @@ func operatingSystem(r *ctis.Report) string {
 	if r == nil {
 		return ""
 	}
-	if v, ok := r.Metadata.Properties["image_os"].(string); ok {
-		return v
+	for _, a := range r.Assets {
+		if a.Type != ctis.AssetTypeContainerImage {
+			continue
+		}
+		for _, t := range a.Technologies {
+			if slices.Contains(t.Categories, "operating-system") {
+				return t.Name
+			}
+		}
 	}
 	return ""
 }
@@ -722,17 +715,48 @@ func truncate(s string, n int) string {
 	return s[:n]
 }
 
-var imageDigestRE = regexp.MustCompile(`sha256:[0-9a-f]{64}$`)
-
-// ImageDigest returns the "sha256:<hex>" digest at the end of a repository
-// digest ("registry/name@sha256:..."), or "".
-func ImageDigest(repoDigest string) string {
-	return imageDigestRE.FindString(strings.ToLower(strings.TrimSpace(repoDigest)))
-}
-
 func nonEmptyEnv(v, fallback string) string {
 	if strings.TrimSpace(v) == "" {
 		return fallback
 	}
 	return strings.TrimSpace(v)
+}
+
+// secretFormat reports whether the scanner output carries raw secrets the
+// importer fingerprints under the run's key.
+func secretFormat(f importer.Format) bool {
+	return f == importer.FormatBetterleaks || f == importer.FormatGitleaks
+}
+
+// techniques are the detection techniques of a capability.
+func techniques(capName string) []ctis.Technique {
+	switch capName {
+	case "sast":
+		return []ctis.Technique{ctis.TechniqueSAST}
+	case "sca":
+		return []ctis.Technique{ctis.TechniqueSCA}
+	case "secrets":
+		return []ctis.Technique{ctis.TechniqueSecret}
+	case "iac":
+		return []ctis.Technique{ctis.TechniqueIaC}
+	case "container":
+		return []ctis.Technique{ctis.TechniqueContainer}
+	}
+	return nil
+}
+
+// setTarget records how the job's one target (the repository, or the scanned
+// image) ended. Without a repository there is no target to name.
+func setTarget(r *ctis.Report, state ctis.TargetState, class ctis.TargetClass) {
+	r.Metadata.Targets = nil
+	for _, a := range r.Assets {
+		if a.Type != ctis.AssetTypeRepository && a.Type != ctis.AssetTypeContainerImage {
+			continue
+		}
+		t := ctis.TargetOutcome{Target: a.Value, Kind: a.Type, State: state, Class: class}
+		if state == ctis.TargetFailed {
+			t.Cause = ctis.TargetCauseSensor
+		}
+		r.Metadata.Targets = append(r.Metadata.Targets, t)
+	}
 }

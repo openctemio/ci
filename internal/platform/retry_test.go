@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openctemio/ctis"
+	"github.com/openctemio/ctis/v2"
 )
 
 // Tests never wait: the backoff a retry would sleep is recorded instead.
@@ -97,7 +97,7 @@ func (s *scripted) server(t *testing.T) *Run {
 }
 
 func smallReport() *ctis.Report {
-	return &ctis.Report{Version: "1.0", Tool: &ctis.Tool{Name: "semgrep"}}
+	return &ctis.Report{Version: ctis.SchemaVersion, Tool: &ctis.Tool{Name: "semgrep"}}
 }
 
 func TestUploadRetriesTransientFailures(t *testing.T) {
@@ -227,7 +227,7 @@ func TestUploadCompressesLargeReports(t *testing.T) {
 		t.Fatal(err)
 	}
 	var body map[string]json.RawMessage
-	if err := json.NewDecoder(zr).Decode(&body); err != nil || body["report"] == nil {
+	if err := json.NewDecoder(zr).Decode(&body); err != nil || body["version"] == nil || body["report"] != nil {
 		t.Fatalf("gzip body: %v", err)
 	}
 }

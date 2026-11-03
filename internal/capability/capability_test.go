@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	taxonomy "github.com/openctemio/ctis/capability"
+	taxonomy "github.com/openctemio/contract/capability"
 )
 
 func TestParse(t *testing.T) {

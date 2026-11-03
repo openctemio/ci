@@ -28,15 +28,24 @@ cleanup() {
 trap cleanup EXIT
 fail=0
 while read -r mod ver; do
-  repo="${mod#github.com/}"
+  # A module path is github.com/<org>/<repo>[/<subpath>]: a major-version
+  # suffix (ctis/v2) is the repository's root module, a nested module
+  # (ctis/v2/interop/sarif) is tagged with its subpath ("v2/interop/sarif/v0.1.0").
+  path="${mod#github.com/}"
+  repo="$(cut -d/ -f1-2 <<<"$path")"
+  sub="${path#"$repo"}"
+  sub="${sub#/}"
   dir="${work}/${repo//\//_}"
-  git clone -q -c gc.auto=0 -c maintenance.auto=false -c fetch.writeCommitGraph=false \
+  # One clone per repository: several modules of it (the root module and its
+  # nested adapters) share it.
+  [[ -d "$dir/.git" ]] || git clone -q -c gc.auto=0 -c maintenance.auto=false -c fetch.writeCommitGraph=false \
     --filter=blob:none --no-checkout --single-branch --branch main \
     "https://github.com/${repo}.git" "$dir" </dev/null
   if [[ "$ver" =~ [.-][0-9]{14}-([0-9a-f]{12})$ ]]; then
     ref="${BASH_REMATCH[1]}"
   else
     ref="$ver" # a tag
+    if [[ -n "$sub" && ! "$sub" =~ ^v[0-9]+$ ]]; then ref="${sub}/${ver}"; fi
     git -C "$dir" fetch -q --tags origin </dev/null
   fi
   if ! sha=$(git -C "$dir" rev-parse -q --verify "${ref}^{commit}" 2>/dev/null); then
@@ -48,5 +57,5 @@ while read -r mod ver; do
     echo "FAIL $mod $ver: ${ref} is not on ${repo} main. Re-pin to a commit on main." >&2
     fail=1
   fi
-done < <(awk '/^\t?github.com\/openctemio\/[a-z-]+ v/ {sub(/^\t/,""); print $1, $2}' go.mod | sort -u)
+done < <(awk '/^\t?github.com\/openctemio\/[a-z-]+(\/[A-Za-z0-9_\/-]+)? v/ {sub(/^\t/,""); print $1, $2}' go.mod | sort -u)
 exit "$fail"

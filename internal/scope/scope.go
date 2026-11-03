@@ -16,7 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/openctemio/ctis"
+	"github.com/openctemio/ctis/v2"
 )
 
 // RepoAssetID is the report-local id of the repository asset.
@@ -72,8 +72,9 @@ func ResolveTarget(workspace, target string) (abs, rel string, err error) {
 
 // Options describe the job a report belongs to.
 type Options struct {
-	// Repository is the canonical repository name (host/owner/name). Empty
-	// outside CI: the report then keeps no asset.
+	// Repository is the repository name (host/owner/name) taken from the
+	// CI provider. Empty outside CI: the report then names one
+	// unclassified local asset and no repository.
 	Repository string
 	// TargetRel is the scanned directory relative to the repository root
 	// ("." for the root). Repository file paths are prefixed with it.
@@ -85,34 +86,72 @@ type Options struct {
 	// files (a container image): they are kept as the tool wrote them,
 	// cleaned, and never prefixed.
 	RepositoryPaths bool
+	// Image is the image reference the job scanned (RepositoryPaths false).
+	// A report names the image as a container_image asset only when its
+	// content digest is known, from the scanner or from this reference.
+	Image string
 }
 
 // Stats counts what Apply changed.
 type Stats struct {
-	// AssetsDropped counts report assets other than the repository.
+	// AssetsDropped counts report assets other than the repository (and the
+	// scanned image).
 	AssetsDropped int
 	// PathsCleared counts file paths that pointed outside the repository.
 	PathsCleared int
 }
 
-// Apply limits report to the repository: one repository asset (none when
-// the repository is unknown), every finding attached to it, and file paths
-// relative to the repository root.
+// LocalAssetID is the report-local id of the asset a scan outside CI is
+// filed on.
+const LocalAssetID = "local-scan"
+
+// ImageAssetID is the report-local id of the scanned image asset.
+const ImageAssetID = "image"
+
+// Apply limits report to the job's own subject: the repository asset (in
+// its canonical form) and, for an image scan whose digest is known, the
+// image asset; every finding and dependency attached to one of them (the
+// image for an image scan, else the repository); and file paths relative to
+// the repository root. Relationships and endpoints of dropped assets are
+// removed. Without a repository the report holds one unclassified local
+// asset instead.
 func Apply(report *ctis.Report, o Options) Stats {
 	var st Stats
 	if report == nil {
 		return st
 	}
 	repo := strings.TrimSpace(o.Repository)
+	if repo != "" {
+		if c, err := ctis.CanonicalRepository(repo); err == nil {
+			repo = c
+		}
+	}
+	var image *ctis.Asset
+	if !o.RepositoryPaths {
+		image = imageAsset(report, o.Image)
+	}
 	for _, a := range report.Assets {
-		if a.Type != ctis.AssetTypeRepository || !strings.EqualFold(a.Value, repo) {
+		keep := (a.Type == ctis.AssetTypeRepository && repo != "" && a.Value == repo) ||
+			(image != nil && a.ID == image.ID)
+		if !keep {
 			st.AssetsDropped++
 		}
 	}
 	report.Assets = nil
-	if repo != "" {
+	subject := RepoAssetID
+	switch {
+	case repo != "":
 		report.Assets = []ctis.Asset{{ID: RepoAssetID, Type: ctis.AssetTypeRepository, Value: repo, Name: repo}}
+	default:
+		subject = LocalAssetID
+		report.Assets = []ctis.Asset{{ID: LocalAssetID, Type: ctis.AssetTypeUnclassified, Value: "local scan", Name: "local scan"}}
 	}
+	if image != nil {
+		image.ID = ImageAssetID
+		report.Assets = append(report.Assets, *image)
+		subject = ImageAssetID
+	}
+	report.Relationships, report.Endpoints = nil, nil
 	fix := func(p string) string {
 		np, ok := normalize(p, o)
 		if !ok {
@@ -122,10 +161,7 @@ func Apply(report *ctis.Report, o Options) Stats {
 	}
 	for i := range report.Findings {
 		f := &report.Findings[i]
-		f.AssetRef, f.AssetValue, f.AssetType = "", "", ""
-		if repo != "" {
-			f.AssetRef = RepoAssetID
-		}
+		f.AssetRef = subject
 		fixLocation(f.Location, fix)
 		for _, l := range f.RelatedLocations {
 			fixLocation(l, fix)
@@ -163,10 +199,7 @@ func Apply(report *ctis.Report, o Options) Stats {
 	}
 	for i := range report.Dependencies {
 		d := &report.Dependencies[i]
-		if d.Path != "" {
-			d.Path = fix(d.Path)
-		}
-		fixLocation(d.Location, fix)
+		d.AssetRef = subject
 		for j := range d.Locations {
 			if d.Locations[j].Path != "" {
 				d.Locations[j].Path = fix(d.Locations[j].Path)
@@ -213,4 +246,41 @@ func normalize(p string, o Options) (string, bool) {
 		return "", false
 	}
 	return c, true
+}
+
+// imageAsset is the report's container_image asset with its content digest:
+// the scanner's own when its value names a digest, else the digest of the
+// reference the job scanned. nil when the digest is unknown (a tag names no
+// one image). The copy is detached from the report.
+func imageAsset(r *ctis.Report, ref string) *ctis.Asset {
+	var found *ctis.Asset
+	for i := range r.Assets {
+		if r.Assets[i].Type == ctis.AssetTypeContainerImage {
+			found = &r.Assets[i]
+			break
+		}
+	}
+	if found != nil {
+		if c, err := ctis.CanonicalImage(found.Value); err == nil && strings.Contains(c, "@sha256:") {
+			a := *found
+			a.Value, a.Properties = c, nil
+			return &a
+		}
+	}
+	if c, err := ctis.CanonicalImage(strings.TrimSpace(ref)); err == nil && strings.Contains(c, "@sha256:") {
+		a := ctis.Asset{ID: ImageAssetID, Type: ctis.AssetTypeContainerImage, Value: c, Name: c}
+		if found != nil {
+			a = *found
+			a.Value, a.Name, a.Properties = c, nonEmpty(found.Name, c), nil
+		}
+		return &a
+	}
+	return nil
+}
+
+func nonEmpty(s, fallback string) string {
+	if s == "" {
+		return fallback
+	}
+	return s
 }

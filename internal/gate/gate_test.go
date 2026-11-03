@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openctemio/ctis"
+	"github.com/openctemio/ctis/v2"
 )
 
 func report(fs ...ctis.Finding) *ctis.Report { return &ctis.Report{Findings: fs} }
@@ -39,8 +39,8 @@ func TestUnknownSeverityBlocks(t *testing.T) {
 
 // An actively exploited finding blocks below the threshold.
 func TestExploitedBlocksBelowThreshold(t *testing.T) {
-	kev := ctis.Finding{Severity: "low", Vulnerability: &ctis.VulnerabilityDetails{InCISAKEV: true}}
-	exp := ctis.Finding{Severity: "medium", Vulnerability: &ctis.VulnerabilityDetails{ExploitAvailable: true}}
+	kev := ctis.Finding{Severity: "low", Vulnerability: kevSignal()}
+	exp := ctis.Finding{Severity: "medium", Vulnerability: &ctis.VulnerabilityDetails{ThreatSignals: []ctis.ThreatSignal{{Type: ctis.ThreatSignalPublicExploit}}}}
 	res, _ := Decide(TallyReport(report(kev, exp)), "critical")
 	if res.Passed || res.RiskBlocking != 2 {
 		t.Fatalf("%+v", res)
@@ -55,7 +55,7 @@ func TestTallyAdd(t *testing.T) {
 	var t1 Tally
 	t1.Add(TallyReport(report(ctis.Finding{Severity: "high"})))
 	t1.Add(TallyReport(report(ctis.Finding{Severity: "high"}, ctis.Finding{Severity: "critical",
-		Vulnerability: &ctis.VulnerabilityDetails{InCISAKEV: true}})))
+		Vulnerability: kevSignal()})))
 	if t1.Severity["high"] != 2 || t1.Severity["critical"] != 1 || t1.Risk["critical"] != 1 || t1.Total() != 3 {
 		t.Fatalf("%+v", t1)
 	}
@@ -64,4 +64,8 @@ func TestTallyAdd(t *testing.T) {
 	if Print(&b, res) != ExitPass {
 		t.Fatal("an empty tally fails")
 	}
+}
+
+func kevSignal() *ctis.VulnerabilityDetails {
+	return &ctis.VulnerabilityDetails{ThreatSignals: []ctis.ThreatSignal{{Type: ctis.ThreatSignalKEV}}}
 }

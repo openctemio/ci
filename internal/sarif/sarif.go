@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/openctemio/ctis"
+	"github.com/openctemio/ctis/v2"
 )
 
 // SchemaURI is the SARIF 2.1.0 schema.
@@ -118,7 +118,7 @@ type Region struct {
 }
 
 // FingerprintKey names the platform fingerprint in partialFingerprints.
-const FingerprintKey = "openctem/v1"
+const FingerprintKey = "openctem/v2"
 
 // Options name the analysis.
 type Options struct {
@@ -179,7 +179,7 @@ func run(r *ctis.Report, o Options, st *Stats) Run {
 		if !ok {
 			ri = len(out.Tool.Driver.Rules)
 			index[id] = ri
-			out.Tool.Driver.Rules = append(out.Tool.Driver.Rules, rule(id, f))
+			out.Tool.Driver.Rules = append(out.Tool.Driver.Rules, rule(id, f, ruleOf(r, f)))
 		}
 		res := Result{RuleID: id, RuleIndex: ri, Level: Level(f.Severity), Message: Message{Text: message(f)},
 			Locations: []Location{*loc}}
@@ -203,26 +203,64 @@ func ruleID(f *ctis.Finding) string {
 
 func vulnID(f *ctis.Finding) string {
 	if f.Vulnerability != nil {
-		return f.Vulnerability.CVEID
+		if c := ctis.CVEs(f.Vulnerability); len(c) > 0 {
+			return c[0]
+		}
 	}
 	return ""
 }
 
-func rule(id string, f *ctis.Finding) Rule {
+// ruleOf is the rule of the report's rules[] the finding names, or nil.
+func ruleOf(r *ctis.Report, f *ctis.Finding) *ctis.Rule {
+	if f.RuleRef == "" {
+		return nil
+	}
+	for i := range r.Rules {
+		if r.Rules[i].ID == f.RuleRef {
+			return &r.Rules[i]
+		}
+	}
+	return nil
+}
+
+func rule(id string, f *ctis.Finding, cat *ctis.Rule) Rule {
 	short := strings.TrimSpace(f.Title)
+	name := f.RuleName
+	if cat != nil {
+		// The rule text is written once in rules[]; the finding's title is
+		// only this occurrence.
+		short = nonEmpty(strings.TrimSpace(cat.ShortDescription), short)
+		name = nonEmpty(cat.Name, name)
+	}
 	if short == "" {
 		short = id
 	}
-	r := Rule{ID: id, Name: truncate(f.RuleName, 255), ShortDescription: Message{Text: truncate(short, 1024)},
+	r := Rule{ID: id, Name: truncate(name, 255), ShortDescription: Message{Text: truncate(short, 1024)},
 		DefaultConfig: RuleConfig{Level: Level(f.Severity)},
 		Properties:    &RuleProperties{SecuritySeverity: securitySeverity(f), Tags: tags(f)}}
-	if d := strings.TrimSpace(f.Description); d != "" {
+	d := strings.TrimSpace(f.Description)
+	help := ""
+	if f.Remediation != nil {
+		help = strings.TrimSpace(f.Remediation.Recommendation)
+	}
+	if cat != nil {
+		d = nonEmpty(strings.TrimSpace(cat.FullDescription), d)
+		help = nonEmpty(strings.TrimSpace(cat.Help), help)
+	}
+	if d != "" {
 		r.FullDescription = &Message{Text: truncate(d, 4096)}
 	}
-	if f.Remediation != nil && strings.TrimSpace(f.Remediation.Recommendation) != "" {
-		r.Help = &Message{Text: truncate(f.Remediation.Recommendation, 4096)}
+	if help != "" {
+		r.Help = &Message{Text: truncate(help, 4096)}
 	}
 	return r
+}
+
+func nonEmpty(s, fallback string) string {
+	if strings.TrimSpace(s) == "" {
+		return fallback
+	}
+	return s
 }
 
 func message(f *ctis.Finding) string {
@@ -271,8 +309,8 @@ func Level(s ctis.Severity) string {
 // severity: the finding's CVSS score when it has one, else the middle of
 // the severity's band.
 func securitySeverity(f *ctis.Finding) string {
-	if v := f.Vulnerability; v != nil && v.CVSSScore > 0 && v.CVSSScore <= 10 {
-		return fmt.Sprintf("%.1f", v.CVSSScore)
+	if sc, ok := ctis.PrimaryCVSS(f); ok && sc.Value != nil && *sc.Value > 0 && *sc.Value <= 10 {
+		return fmt.Sprintf("%.1f", *sc.Value)
 	}
 	switch strings.ToLower(string(f.Severity)) {
 	case "critical":
@@ -293,7 +331,7 @@ func tags(f *ctis.Finding) []string {
 		set[string(f.Type)] = true
 	}
 	if v := f.Vulnerability; v != nil {
-		for _, c := range append([]string{v.CWEID}, v.CWEIDs...) {
+		for _, c := range v.CWEIDs {
 			if c = strings.TrimSpace(c); c != "" {
 				set["external/cwe/"+strings.ToLower(c)] = true
 			}

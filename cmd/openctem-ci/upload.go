@@ -16,7 +16,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/openctemio/ctis/importer"
+	"github.com/openctemio/ctis/v2/importer"
 
 	"github.com/openctemio/ci/internal/ciinfo"
 	"github.com/openctemio/ci/internal/gate"

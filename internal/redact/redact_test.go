@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/openctemio/ctis"
-	"github.com/openctemio/ctis/importer"
+	"github.com/openctemio/ctis/v2"
+	"github.com/openctemio/ctis/v2/importer"
 )
 
 const raw = "Zq8vT3xK9mB2nR7wL4pY6sD1fH5jC0gA"

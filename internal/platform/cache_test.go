@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openctemio/ctis"
+	"github.com/openctemio/ctis/v2"
 )
 
 // gitlabJob is one GitLab job's environment against a fake platform.

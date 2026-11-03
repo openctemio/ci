@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/openctemio/ctis"
+	"github.com/openctemio/ctis/v2"
 
 	"github.com/openctemio/ci/internal/platform"
 	"github.com/openctemio/ci/internal/redact"
@@ -85,12 +85,14 @@ func (st status) capabilityState() platform.CapabilityState {
 // partial coverage (the platform never resolves anything from it) and the
 // failure, so it can never be read as a clean scan.
 func markPartial(r *ctis.Report, class string) {
-	r.Metadata.CoverageType = "partial"
-	if r.Metadata.Properties == nil {
-		r.Metadata.Properties = ctis.Properties{}
+	r.Metadata.CoverageType = ctis.CoveragePartial
+	// The target did not finish: nothing is ever called gone from this
+	// report, and the failure cannot be read as a clean scan.
+	tc := ctis.TargetClassToolError
+	if class == "timeout" {
+		tc = ctis.TargetClassTimeout
 	}
-	r.Metadata.Properties["openctem_scan_state"] = "failed"
-	r.Metadata.Properties["openctem_scan_error"] = class
+	setTarget(r, ctis.TargetFailed, tc)
 }
 
 // failPartial uploads what a failed tool found, marked partial, and fails

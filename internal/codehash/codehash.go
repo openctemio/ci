@@ -8,26 +8,22 @@ package codehash
 
 import (
 	"bufio"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"io/fs"
 	"os"
 	"path"
-	"regexp"
 	"strings"
 
-	"github.com/openctemio/ctis"
+	"github.com/openctemio/ctis/v2"
+	"github.com/openctemio/ctis/v2/fingerprint"
 )
 
-// PartialKey is the CTIS partial_fingerprints key that carries the hash
-// (ctis fingerprint.PartialSnippetHash).
-const PartialKey = "snippetHash/v1"
+// PartialKey is the CTIS partial_fingerprints key that carries the hash.
+const PartialKey = fingerprint.PartialSnippetHash
 
-// MaxLines is how many lines of a match are hashed (ctis
-// fingerprint.MaxSnippetHashLines): scanners keep the first lines of a long
-// match, so the job cuts where they cut.
-const MaxLines = 10
+// MaxLines is how many lines of a match are hashed: scanners keep the first
+// lines of a long match, so the job cuts where they cut.
+const MaxLines = fingerprint.MaxSnippetHashLines
 
 // maxLineBytes bounds one source line read; a longer line (minified code)
 // gets no hash and the finding keeps its line key.
@@ -36,26 +32,10 @@ const maxLineBytes = 64 << 10
 // semgrepPlaceholder is what Semgrep without a login writes as the snippet.
 const semgrepPlaceholder = "requires login"
 
-var space = regexp.MustCompile(`\s+`)
-
-// Hash is the SnippetHash of CTIS (ctis fingerprint.SnippetHash): each line
-// trimmed, inner ASCII whitespace runs made one space, empty lines dropped,
-// joined with LF; the first 16 bytes of the SHA-256 in lowercase hex. "" when
-// no code is left.
-func Hash(snippet string) string {
-	lines := strings.Split(strings.ReplaceAll(snippet, "\r\n", "\n"), "\n")
-	kept := make([]string, 0, len(lines))
-	for _, l := range lines {
-		if t := strings.TrimSpace(l); t != "" {
-			kept = append(kept, space.ReplaceAllString(t, " "))
-		}
-	}
-	if len(kept) == 0 {
-		return ""
-	}
-	sum := sha256.Sum256([]byte(strings.Join(kept, "\n")))
-	return hex.EncodeToString(sum[:16])
-}
+// Hash is the SnippetHash of CTIS: each line trimmed, inner whitespace runs
+// made one space, empty lines dropped, joined with LF; the first 16 bytes of
+// the SHA-256 in lowercase hex. "" when no code is left.
+func Hash(snippet string) string { return fingerprint.SnippetHash(snippet) }
 
 // Fill sets PartialKey on every finding of r that has a repository path and
 // a start line but no snippet, from the lines it flags in the tree at root.

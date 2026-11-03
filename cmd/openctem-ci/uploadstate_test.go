@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/openctemio/ctis/v2"
 
 	"github.com/openctemio/ci/internal/platform"
 )
@@ -130,24 +133,17 @@ func TestToolCrashUploadsPartialResultsMarkedPartial(t *testing.T) {
 	if len(h.p.uploads) != 1 {
 		t.Fatalf("%d uploads", len(h.p.uploads))
 	}
-	var body struct {
-		Report struct {
-			Metadata struct {
-				CoverageType string         `json:"coverage_type"`
-				Properties   map[string]any `json:"properties"`
-			} `json:"metadata"`
-			Findings []json.RawMessage `json:"findings"`
-		} `json:"report"`
-	}
-	if err := json.Unmarshal(h.p.uploads[0], &body); err != nil {
+	body, _, err := ctis.Decode(bytes.NewReader(h.p.uploads[0]))
+	if err != nil {
 		t.Fatal(err)
 	}
-	md := body.Report.Metadata
-	if md.CoverageType != "partial" || md.Properties["openctem_scan_state"] != "failed" || md.Properties["openctem_scan_error"] != "scan_failed" {
+	md := body.Metadata
+	if md.CoverageType != ctis.CoveragePartial || len(md.Targets) != 1 || md.Targets[0].State != ctis.TargetFailed ||
+		md.Targets[0].Class != ctis.TargetClassToolError || len(md.Properties) != 0 {
 		t.Fatalf("the partial report is not marked: %+v", md)
 	}
-	if len(body.Report.Findings) != 1 {
-		t.Fatalf("%d findings uploaded", len(body.Report.Findings))
+	if len(body.Findings) != 1 {
+		t.Fatalf("%d findings uploaded", len(body.Findings))
 	}
 	st := readStatusFile(t, path)
 	if st.OK || !st.Partial || st.Upload != uploadDone {

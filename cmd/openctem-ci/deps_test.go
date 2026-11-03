@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/openctemio/ctis"
-	"github.com/openctemio/ctis/importer"
+	"github.com/openctemio/ctis/v2"
+	"github.com/openctemio/ctis/v2/importer"
 
 	"github.com/openctemio/ci/internal/capability"
 	"github.com/openctemio/ci/internal/ciinfo"
@@ -29,7 +29,7 @@ func convertTrivy(t *testing.T, fixture string) (*ctis.Report, string) {
 	c, _ := capability.Lookup("sca")
 	var out bytes.Buffer
 	s := &scanJob{c: c, stdout: &out, stderr: &out, info: ciinfo.Info{Repository: "github.com/acme/shop", Branch: "main", Commit: "3f1c2a9e"}}
-	r, err := s.convert(context.Background(), &scanner.Result{Tool: "trivy", Output: data, Format: importer.FormatTrivy}, nil, t.TempDir(), ".")
+	r, err := s.convert(context.Background(), &scanner.Result{Tool: "trivy", Output: data, Format: importer.FormatTrivy}, nil, nil, t.TempDir(), ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func convertTrivy(t *testing.T, fixture string) (*ctis.Report, string) {
 func findingOf(t *testing.T, r *ctis.Report, pkg string) *ctis.Finding {
 	t.Helper()
 	for i := range r.Findings {
-		if v := r.Findings[i].Vulnerability; v != nil && v.Package == pkg {
+		if v := r.Findings[i].Vulnerability; v != nil && v.PackageName == pkg {
 			return &r.Findings[i]
 		}
 	}
@@ -81,8 +81,8 @@ func TestSCA_Node_DirectAndTransitive(t *testing.T) {
 		if d.ID == "express@4.17.1" && !reflect.DeepEqual(d.DependsOn, []string{"body-parser@1.19.0", "cookie@0.4.0", "path-to-regexp@0.1.7", "qs@6.7.0", "send@0.17.1", "serve-static@1.14.1"}) {
 			t.Fatalf("express depends_on keeps packages not uploaded: %v", d.DependsOn)
 		}
-		if d.Path != "package-lock.json" {
-			t.Fatalf("dependency %s path %q", d.ID, d.Path)
+		if len(d.Locations) == 0 || d.Locations[0].Path != "package-lock.json" {
+			t.Fatalf("dependency %s locations %+v", d.ID, d.Locations)
 		}
 	}
 	if !bytes.Contains([]byte(log), []byte("43 package(s) without a finding are not uploaded")) {
@@ -116,13 +116,13 @@ func TestSCA_Python_DirectAndTransitive(t *testing.T) {
 func TestKeepFindingDependencies(t *testing.T) {
 	r := &ctis.Report{
 		Findings: []ctis.Finding{
-			{Vulnerability: &ctis.VulnerabilityDetails{DependencyPath: []string{"app", "a@1", "b@1"}}, SourceExtra: map[string]string{"pkg_id": "b@1"}},
+			{Vulnerability: &ctis.VulnerabilityDetails{DependencyPath: []string{"app", "a@1", "b@1"}}, DependencyRef: "b@1", SourceExtra: map[string]string{"pkg_id": "b@1"}},
 			{Type: ctis.FindingTypeSecret, SourceExtra: map[string]string{"pkg_id": "secret-only@1"}},
 		},
 		Dependencies: []ctis.Dependency{
-			{ID: "app", Relationship: "root", DependsOn: []string{"a@1", "z@1"}},
-			{ID: "a@1", Relationship: "direct", DependsOn: []string{"b@1", "c@1"}},
-			{ID: "b@1"}, {ID: "c@1"}, {ID: "z@1"}, {ID: "secret-only@1"},
+			{ID: "app", SourceID: "app", Relationship: ctis.DependencyRoot, DependsOn: []string{"a@1", "z@1"}},
+			{ID: "a@1", SourceID: "a@1", Relationship: ctis.DependencyDirect, DependsOn: []string{"b@1", "c@1"}},
+			{ID: "b@1", SourceID: "b@1"}, {ID: "c@1", SourceID: "c@1"}, {ID: "z@1", SourceID: "z@1"}, {ID: "secret-only@1", SourceID: "secret-only@1"},
 		},
 	}
 	if n := keepFindingDependencies(r); n != 3 {
@@ -139,8 +139,8 @@ func TestKeepFindingDependencies(t *testing.T) {
 	big := &ctis.Report{}
 	for i := range maxReportDependencies + 5 {
 		id := "p" + strconv.Itoa(i)
-		big.Dependencies = append(big.Dependencies, ctis.Dependency{ID: id})
-		big.Findings = append(big.Findings, ctis.Finding{Vulnerability: &ctis.VulnerabilityDetails{}, SourceExtra: map[string]string{"pkg_id": id}})
+		big.Dependencies = append(big.Dependencies, ctis.Dependency{ID: id, SourceID: id})
+		big.Findings = append(big.Findings, ctis.Finding{Vulnerability: &ctis.VulnerabilityDetails{}, DependencyRef: id})
 	}
 	if n := keepFindingDependencies(big); n != 5 || len(big.Dependencies) != maxReportDependencies {
 		t.Fatalf("removed %d, kept %d", n, len(big.Dependencies))

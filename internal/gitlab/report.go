@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openctemio/ctis"
+	"github.com/openctemio/ctis/v2"
 )
 
 // SchemaVersion is the security report schema version written.
@@ -243,8 +243,8 @@ func FromReport(r *ctis.Report, o Options) (*Report, Stats, error) {
 		if f.Remediation != nil {
 			v.Solution = truncate(strings.TrimSpace(f.Remediation.Recommendation), 16<<10)
 		}
-		if v.Solution == "" && f.Vulnerability != nil && f.Vulnerability.FixedVersion != "" {
-			v.Solution = "Upgrade " + f.Vulnerability.Package + " to " + f.Vulnerability.FixedVersion
+		if fv := fixedVersion(f); v.Solution == "" && fv != "" {
+			v.Solution = "Upgrade " + f.Vulnerability.PackageName + " to " + fv
 		}
 		out.Vulnerabilities = append(out.Vulnerabilities, v)
 		st.Written++
@@ -279,8 +279,8 @@ func location(f *ctis.Finding, o Options) (any, bool) {
 		return FileLocation{File: path, StartLine: start, EndLine: end}, true
 	case TypeSecretDetection:
 		sha := strings.TrimSpace(o.Commit)
-		if sha == "" && f.Location != nil {
-			sha = f.Location.CommitSHA
+		if sha == "" && f.Location != nil && f.Location.Commit != nil {
+			sha = f.Location.Commit.SHA
 		}
 		if path == "" || sha == "" {
 			return nil, false
@@ -305,9 +305,21 @@ func location(f *ctis.Finding, o Options) (any, bool) {
 
 func pkgVersion(f *ctis.Finding) (string, string) {
 	if v := f.Vulnerability; v != nil {
-		return strings.TrimSpace(v.Package), strings.TrimSpace(v.AffectedVersion)
+		return strings.TrimSpace(v.PackageName), strings.TrimSpace(v.InstalledVersion)
 	}
 	return "", ""
+}
+
+// fixedVersion is the first fixed version the tool names.
+func fixedVersion(f *ctis.Finding) string {
+	if v := f.Vulnerability; v != nil {
+		for _, fv := range v.FixedVersions {
+			if fv = strings.TrimSpace(fv); fv != "" {
+				return fv
+			}
+		}
+	}
+	return ""
 }
 
 func identifiers(tool string, f *ctis.Finding) []Identifier {
@@ -319,7 +331,7 @@ func identifiers(tool string, f *ctis.Finding) []Identifier {
 	}
 	if v := f.Vulnerability; v != nil {
 		seen := map[string]bool{}
-		for _, c := range append([]string{v.CVEID}, v.CVEIDs...) {
+		for _, c := range ctis.CVEs(v) {
 			c = strings.TrimSpace(c)
 			if c == "" || seen[c] {
 				continue
@@ -337,7 +349,7 @@ func identifiers(tool string, f *ctis.Finding) []Identifier {
 	}
 	if v := f.Vulnerability; v != nil {
 		seen := map[string]bool{}
-		for _, c := range append([]string{v.CWEID}, v.CWEIDs...) {
+		for _, c := range v.CWEIDs {
 			n := strings.TrimPrefix(strings.ToUpper(strings.TrimSpace(c)), "CWE-")
 			if n == "" || seen[n] || !digits(n) {
 				continue
@@ -396,7 +408,11 @@ func stableID(kind string, f *ctis.Finding) string {
 
 func vulnKey(f *ctis.Finding) string {
 	if v := f.Vulnerability; v != nil {
-		return v.CVEID + "@" + v.Package + "@" + v.AffectedVersion
+		cve := ""
+		if c := ctis.CVEs(v); len(c) > 0 {
+			cve = c[0]
+		}
+		return cve + "@" + v.PackageName + "@" + v.InstalledVersion
 	}
 	return ""
 }
@@ -422,8 +438,10 @@ func ruleOrCVE(f *ctis.Finding) string {
 	if f.RuleID != "" {
 		return f.RuleID
 	}
-	if f.Vulnerability != nil && f.Vulnerability.CVEID != "" {
-		return f.Vulnerability.CVEID
+	if f.Vulnerability != nil {
+		if c := ctis.CVEs(f.Vulnerability); len(c) > 0 {
+			return c[0]
+		}
 	}
 	return "Finding"
 }

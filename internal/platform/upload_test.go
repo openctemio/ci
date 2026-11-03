@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openctemio/ctis"
+	"github.com/openctemio/ctis/v2"
 )
 
 // uploadServer is a stand-in platform whose results and known replies the
@@ -25,6 +25,8 @@ type uploadServer struct {
 	known   func(cursor string) (int, string)
 	reports []*ctis.Report
 	calls   map[string]int
+	// contentTypes of the results requests.
+	contentTypes []string
 }
 
 func (u *uploadServer) run(t *testing.T) *Run {
@@ -48,16 +50,16 @@ func (u *uploadServer) run(t *testing.T) *Run {
 		case "exchange":
 			_ = json.NewEncoder(w).Encode(map[string]any{"run_id": "run-1", "token": runToken, "expires_at": time.Now().Add(15 * time.Minute)})
 		case "results":
-			var req struct {
-				Report *ctis.Report `json:"report"`
-			}
-			if err := json.NewDecoder(body).Decode(&req); err != nil {
+			// The body is the CTIS document itself, not an envelope.
+			u.contentTypes = append(u.contentTypes, r.Header.Get("Content-Type"))
+			rep := new(ctis.Report)
+			if err := json.NewDecoder(body).Decode(rep); err != nil {
 				t.Error(err)
 				return
 			}
-			status, reply := u.results(req.Report, u.calls[key])
+			status, reply := u.results(rep, u.calls[key])
 			if status < 300 {
-				u.reports = append(u.reports, req.Report)
+				u.reports = append(u.reports, rep)
 			}
 			w.WriteHeader(status)
 			_, _ = io.WriteString(w, reply)
@@ -89,7 +91,8 @@ func (u *uploadServer) run(t *testing.T) *Run {
 }
 
 func reportWith(n int) *ctis.Report {
-	r := &ctis.Report{Version: "1.0", Tool: &ctis.Tool{Name: "trivy"}}
+	r := &ctis.Report{Version: ctis.SchemaVersion, Tool: &ctis.Tool{Name: "trivy"},
+		Metadata: ctis.ReportMetadata{ID: ctis.NewReportID(), GeneratedAt: time.Now().UTC(), Channel: ctis.ChannelScanner}}
 	for i := 0; i < n; i++ {
 		r.Findings = append(r.Findings, ctis.Finding{RuleID: fmt.Sprintf("r%d", i), Title: "t"})
 	}
@@ -222,7 +225,6 @@ func TestUploadFollowsKnownPages(t *testing.T) {
 func TestUploadSplitsALargeReport(t *testing.T) {
 	setPartLimits(t, 4<<10, 50)
 	rep := reportWith(300)
-	rep.Metadata.SourceType = "ci"
 	rep.Dependencies = []ctis.Dependency{{Name: "lodash", Version: "4.17.15"}}
 	u := &uploadServer{results: func(r *ctis.Report, _ int) (int, string) {
 		return http.StatusCreated, `{"findings_created":` + fmt.Sprint(len(r.Findings)) + `,"known":` + knownJSON(0) + `}`
@@ -234,10 +236,20 @@ func TestUploadSplitsALargeReport(t *testing.T) {
 	if res.Parts < 2 || res.Parts != len(u.reports) || res.FindingsCreated != 300 {
 		t.Fatalf("parts %d (%d stored), created %d", res.Parts, len(u.reports), res.FindingsCreated)
 	}
+	for _, ct := range u.contentTypes {
+		if ct != ctis.MediaTypeVersioned {
+			t.Fatalf("content type %q, want %q", ct, ctis.MediaTypeVersioned)
+		}
+	}
 	next, deps := 0, 0
 	for i, p := range u.reports {
-		if p.Tool == nil || p.Tool.Name != "trivy" || p.Metadata.SourceType != "ci" {
+		if p.Tool == nil || p.Tool.Name != "trivy" || p.Metadata.Channel != ctis.ChannelScanner {
 			t.Fatalf("part %d lacks the report's tool or metadata", i)
+		}
+		// The parts are the segments of one result: one id, their place.
+		if p.Metadata.ID != rep.Metadata.ID || p.Metadata.Segment == nil ||
+			p.Metadata.Segment.Index != i || p.Metadata.Segment.Count != len(u.reports) {
+			t.Fatalf("part %d: id %q segment %+v", i, p.Metadata.ID, p.Metadata.Segment)
 		}
 		deps += len(p.Dependencies)
 		if i > 0 && len(p.Dependencies) > 0 {
@@ -281,6 +293,17 @@ func TestUploadSplitsOnTooLarge(t *testing.T) {
 			t.Fatalf("known %+v", res.Known)
 		}
 	}
+	// Each half is a document of its own: a receiver deduplicates on
+	// metadata.id, so halves sharing the parent's id would be dropped as
+	// retries. They are partial, so nothing is called gone from them.
+	seen := map[string]bool{}
+	for _, p := range u.reports {
+		if !ctis.IsReportID(p.Metadata.ID) || seen[p.Metadata.ID] || p.Metadata.Segment != nil ||
+			p.Metadata.CoverageType != ctis.CoveragePartial {
+			t.Fatalf("half: id %q (dup %v) segment %+v coverage %q", p.Metadata.ID, seen[p.Metadata.ID], p.Metadata.Segment, p.Metadata.CoverageType)
+		}
+		seen[p.Metadata.ID] = true
+	}
 
 	never := &uploadServer{results: func(*ctis.Report, int) (int, string) {
 		return http.StatusRequestEntityTooLarge, `{"message":"too large"}`
@@ -309,5 +332,22 @@ func TestSplitReportLimits(t *testing.T) {
 	extras.Dependencies = []ctis.Dependency{{Name: strings.Repeat("d", 8<<10)}}
 	if _, err := splitReport(extras, 4<<10, 10); !errors.Is(err, ErrReportTooLarge) {
 		t.Fatalf("oversized dependencies: %v", err)
+	}
+}
+
+// A report built without a metadata.id gets a producer UUIDv7 once; a retry
+// of the same upload re-sends the same id.
+func TestUploadAssignsAReportID(t *testing.T) {
+	rep := reportWith(1)
+	rep.Metadata.ID = ""
+	u := &uploadServer{results: func(*ctis.Report, int) (int, string) { return http.StatusCreated, `{}` }}
+	if _, err := u.run(t).Upload(context.Background(), rep); err != nil {
+		t.Fatal(err)
+	}
+	if len(u.reports) != 1 || !ctis.IsReportID(u.reports[0].Metadata.ID) {
+		t.Fatalf("%+v", u.reports)
+	}
+	if rep.Metadata.ID != "" {
+		t.Fatal("the caller's report was changed")
 	}
 }

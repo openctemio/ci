@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openctemio/ctis"
+	"github.com/openctemio/ctis/v2"
 )
 
 const runToken = "octci_RUNTOKEN_never_printed"
@@ -105,7 +105,7 @@ func TestGitHubRunUploadEvaluate(t *testing.T) {
 	if r.Provider() != ProviderGitHub {
 		t.Fatal(r.Provider())
 	}
-	up, err := r.Upload(context.Background(), &ctis.Report{Version: "1.6"})
+	up, err := r.Upload(context.Background(), &ctis.Report{Version: ctis.SchemaVersion})
 	if err != nil || up.FindingsCreated != 2 {
 		t.Fatalf("%v %+v", err, up)
 	}
