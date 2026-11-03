@@ -29,6 +29,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/openctemio/ctis/v2"
 )
 
 // Environment variables.
@@ -669,6 +671,15 @@ func transportErr(status int, err error) error {
 	return err
 }
 
+// contentTypeFor is the media type of a request body: the results of a run
+// are a CTIS document (ctis.MediaTypeVersioned), everything else JSON.
+func contentTypeFor(path string) string {
+	if strings.HasSuffix(path, "/results") {
+		return ctis.MediaTypeVersioned
+	}
+	return "application/json"
+}
+
 // once sends one request; status is 0 when no HTTP answer came back.
 func (r *Run) once(ctx context.Context, timeout time.Duration, bearer, path string, body []byte, encoding string, out any) (int, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
@@ -677,7 +688,7 @@ func (r *Run) once(ctx context.Context, timeout time.Duration, bearer, path stri
 	if err != nil {
 		return 0, "", err
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentTypeFor(path))
 	req.Header.Set("Accept", "application/json")
 	if encoding != "" {
 		req.Header.Set("Content-Encoding", encoding)

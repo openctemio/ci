@@ -72,23 +72,21 @@ func TestScanLeavesKnownFalsePositivesOutOfItsOutput(t *testing.T) {
 		t.Fatalf("uploads: %d", len(h.p.uploads))
 	}
 	var up struct {
-		Report struct {
-			Findings []struct {
-				RuleID   string            `json:"rule_id"`
-				Partial  map[string]string `json:"partial_fingerprints"`
-				Location struct {
-					Snippet string `json:"snippet"`
-				} `json:"location"`
-			} `json:"findings"`
-		} `json:"report"`
+		Findings []struct {
+			RuleID   string            `json:"rule_id"`
+			Partial  map[string]string `json:"partial_fingerprints"`
+			Location struct {
+				Snippet string `json:"snippet"`
+			} `json:"location"`
+		} `json:"findings"`
 	}
 	if err := json.Unmarshal(h.p.uploads[0], &up); err != nil {
 		t.Fatal(err)
 	}
-	if len(up.Report.Findings) != 2 {
-		t.Fatalf("the platform must receive every result, got %d", len(up.Report.Findings))
+	if len(up.Findings) != 2 {
+		t.Fatalf("the platform must receive every result, got %d", len(up.Findings))
 	}
-	for _, f := range up.Report.Findings {
+	for _, f := range up.Findings {
 		if len(f.Partial["snippetHash/v1"]) != 32 {
 			t.Errorf("%s: no code hash: %v", f.RuleID, f.Partial)
 		}
@@ -136,7 +134,7 @@ func TestScanSendsSecretsAsKeyedHashes(t *testing.T) {
 		t.Fatalf("uploads: %d", len(h.p.uploads))
 	}
 	up := string(h.p.uploads[0])
-	if !strings.Contains(up, `"secretHMAC/v1"`) || strings.Contains(up, rawSecret) {
-		t.Fatalf("upload: hash present %v, raw secret present %v", strings.Contains(up, `"secretHMAC/v1"`), strings.Contains(up, rawSecret))
+	if !strings.Contains(up, `"fingerprint":"ctis-fp/2:`) || strings.Contains(up, rawSecret) {
+		t.Fatalf("upload: fingerprint present %v, raw secret present %v", strings.Contains(up, `"fingerprint":"ctis-fp/2:`), strings.Contains(up, rawSecret))
 	}
 }

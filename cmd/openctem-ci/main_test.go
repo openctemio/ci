@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openctemio/ctis"
+	"github.com/openctemio/ctis/v2"
 )
 
 const rawSecret = "Zq8vT3xK9mB2nR7wL4pY6sD1fH5jC0gA"
@@ -177,24 +177,19 @@ func TestScanUploadsMaskedReportAndAsksTheGate(t *testing.T) {
 	if len(h.p.uploads) != 1 || strings.Contains(string(h.p.uploads[0]), rawSecret) {
 		t.Fatalf("uploads: %d, raw secret uploaded: %v", len(h.p.uploads), len(h.p.uploads) == 1 && strings.Contains(string(h.p.uploads[0]), rawSecret))
 	}
-	var up struct {
-		Report struct {
-			Assets []struct {
-				Type, Value string
-			} `json:"assets"`
-			Metadata struct {
-				Properties   map[string]any `json:"properties"`
-				Capability   string         `json:"capability"`
-				CoverageType string         `json:"coverage_type"`
-			} `json:"metadata"`
-		} `json:"report"`
-	}
-	if err := json.Unmarshal(h.p.uploads[0], &up); err != nil {
+	// The upload is the CTIS document itself.
+	up, _, err := ctis.Decode(bytes.NewReader(h.p.uploads[0]))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if len(up.Report.Assets) != 1 || up.Report.Assets[0].Value != "gitlab.com/acme/app" ||
-		up.Report.Metadata.Properties["capability"] != "secrets.code@1" || up.Report.Metadata.Capability != "" || up.Report.Metadata.CoverageType != "full" {
-		t.Fatalf("%+v", up.Report)
+	if err := up.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	capability, _ := up.Metadata.Extensions.Get(ctis.OpenCTEMNamespace, "capability")
+	if len(up.Assets) != 1 || up.Assets[0].Value != "gitlab.com/acme/app" || up.Assets[0].Type != ctis.AssetTypeRepository ||
+		capability != "secrets.code@1" || len(up.Metadata.Properties) != 0 || up.Metadata.CoverageType != ctis.CoverageFull ||
+		!ctis.IsReportID(up.Metadata.ID) {
+		t.Fatalf("%+v", up)
 	}
 	if len(h.p.exchanges) != 1 || h.p.exchanges[0]["id_token"] != "gl-id-token" || h.p.exchanges[0]["aggregate"] != nil {
 		t.Fatalf("%+v", h.p.exchanges)
@@ -381,18 +376,6 @@ func TestLocateTrivyTargets(t *testing.T) {
 	if r.Findings[0].Location.Path != "app/requirements.txt" || r.Findings[1].Location.Path != "keep.go" ||
 		r.Findings[2].Location != nil || r.Findings[3].Location != nil {
 		t.Fatalf("%+v", r.Findings)
-	}
-}
-
-func TestImageDigest(t *testing.T) {
-	d := "sha256:" + strings.Repeat("ab", 32)
-	if got := ImageDigest("ghcr.io/acme/api@" + d); got != d {
-		t.Fatalf("got %q", got)
-	}
-	for _, bad := range []string{"", "ghcr.io/acme/api:latest", "sha256:abc", "x@sha256:" + strings.Repeat("g", 64)} {
-		if got := ImageDigest(bad); got != "" {
-			t.Fatalf("%q gave %q", bad, got)
-		}
 	}
 }
 

@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/openctemio/ctis"
+	"github.com/openctemio/ctis/v2"
 )
 
 // Exit codes of openctem-ci.
@@ -55,7 +55,7 @@ func TallyReport(r *ctis.Report) Tally {
 			sev = unknown
 		}
 		t.Severity[sev]++
-		if v := f.Vulnerability; v != nil && (v.InCISAKEV || v.ExploitAvailable) {
+		if v := f.Vulnerability; v != nil && (ctis.HasThreatSignal(v, ctis.ThreatSignalKEV, ctis.ThreatSignalExploitedInWild, ctis.ThreatSignalPublicExploit, ctis.ThreatSignalRansomwareUse, ctis.ThreatSignalWeaponized)) {
 			t.Risk[sev]++
 		}
 	}

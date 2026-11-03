@@ -16,10 +16,12 @@ CI job ── checkout ──▶ openctem-ci scan --capability sast
                          │    at the merge base) and secrets scans only the change's commits
                          │    (betterleaks git --log-opts=<base>..HEAD) when the history is there,
                          │    else a full scan
-                         │ 4. convert its native output to CTIS (ctis/importer)
-                         │ 5. scope: one repository asset, repository-relative paths;
+                         │ 4. convert its native output to CTIS (ctis/v2/importer)
+                         │ 5. scope: one repository asset (canonical form; the scanned image as a
+                         │    container_image asset when its digest is known), repository-relative paths;
                          │    sast: the hash of each result's flagged lines (snippetHash/v1)
-                         │    secrets: HMAC-SHA256 of each raw secret under the run's key (secretHMAC/v1)
+                         │    secrets: ctis-fp/2 fingerprint over an HMAC-SHA256 of each raw secret
+                         │    under the run's key (the importer's SecretKey; no key, no fingerprint)
                          │ 6. redact: mask secrets everywhere, then check every output
                          │ 7. exchange the job's OIDC token for a run token, upload every result
                          │ 8. leave out the results the platform says are already decided,
@@ -131,7 +133,7 @@ A broken scan never exits 0.
 
 Users choose capabilities, never images or tools. The one mapping is
 `internal/capability/capability.go`; its ids are the platform capability
-taxonomy ids (`ctis/capability`), checked by a test.
+taxonomy ids (`github.com/openctemio/contract/capability`), checked by a test.
 
 | Name | Capability id | Tool | Image | GitLab report |
 |---|---|---|---|---|
@@ -153,9 +155,14 @@ findings' paths and the project entries, at most 10 000, with `depends_on`
 limited to kept packages. The report's size follows the findings, not the
 dependency tree; a full package inventory (SBOM) is not what `sca` uploads.
 
-A `container` report carries the image reference (`metadata.properties.container_image`)
-and its content digest (`image_digest`, from the registry digest trivy reports), so
-the platform can relate the repository to the workloads running that exact image.
+A `container` report names the scanned image as a `container_image` asset whose
+value is the canonical form `<registry>/<repository>@sha256:<digest>` (Docker Hub
+names expanded to `docker.io/library/...`), and files its findings on it, so the
+platform can relate the repository to the workloads running that exact image. The
+digest comes from the registry digest trivy reports, else from the reference given
+to `--image`. A tag alone names no one image: without a digest the report has no
+image asset and the findings stay on the repository asset. The image's operating
+system is a typed technology of the image asset.
 
 `all` selects every repository capability (`container` needs `--image` and is
 never implied). `ghcr.io/openctemio/ci` carries every tool.
@@ -243,8 +250,8 @@ default tool.
 A tool that crashes or times out is a failed capability, never a clean
 one. It uploads nothing, unless the tool had written a report. Then what it
 found goes up marked partial: `coverage_type: partial`, so the platform never
-resolves anything from it, and the metadata properties
-`openctem_scan_state: failed` and `openctem_scan_error: <class>`. Those
+resolves anything from it, and `metadata.targets` names the repository (or image)
+with state `failed` and class `tool_error` (`timeout` for a timeout). Those
 results go through the same redaction and keyed-hash steps first. The job
 still exits 2, and the gate still counts the capability as failed. Partial
 results are not written to the job's SARIF or merge request report.
@@ -273,7 +280,7 @@ A platform that does not answer `aggregate: true` is refused
 | A fork pull/merge request exfiltrates the platform credential or uploads forged results | A fork is detected from the event (GitHub: head repository differs or is a fork; GitLab: source project differs) and never uploads or uses a credential; GitHub gives forks no OIDC token; the platform trust refuses forks by default |
 | A long-lived key leaks from CI settings or logs | No key exists: OIDC per job, short-lived run token, never printed |
 | A scanned repository runs code through the tool's environment | The tool gets an allow-listed environment (no OIDC request token, ID token, job token, platform or API key); the tool is resolved only from absolute PATH entries |
-| A raw secret reaches the platform, an artifact or the log | Each secret goes up only as `HMAC-SHA256` of its raw value under the key the exchange hands the run (per organization and repository; CTIS partial fingerprint `secretHMAC/v1`), so the platform keys the finding on the secret without seeing it. Secret scanner output goes to a private 0700 temp dir, removed after the run; every finding is masked (`ctis.RedactSecretFinding` with the raw values); every output is checked for the raw values before it is written or sent, and the run stops instead (`ErrSecretInOutput`); SARIF and GitLab reports carry no snippet; the secret scanner is never run with `--verbose` |
+| A raw secret reaches the platform, an artifact or the log | Each secret goes up only as `HMAC-SHA256` of its raw value under the key the exchange hands the run (per organization and repository; the importer builds the CTIS 2.0 `ctis-fp/2` fingerprint from the HMAC digest, and a report without the key carries no secret fingerprint), so the platform keys the finding on the secret without seeing it. Secret scanner output goes to a private 0700 temp dir, removed after the run; every finding is masked (`ctis.RedactSecretFinding` with the raw values); every output is checked for the raw values before it is written or sent, and the run stops instead (`ErrSecretInOutput`); SARIF and GitLab reports carry no snippet; the secret scanner is never run with `--verbose` |
 | A report names another repository or a path outside the checkout | The target must resolve inside the workspace; the report keeps one repository asset; paths outside the repository are cleared; the platform re-validates (`ScopeReport`) |
 | Hostile tool output (huge, deep, malformed) | Bounded reads (512 MB), `ctis/importer` limits; a parse error is a scan failure. The sca package graph is walked with a bounded search (cycles end, at most 32 path entries) and the uploaded dependencies are capped at 10 000 |
 | Platform or scanner text forges CI log lines | Control characters and `::` workflow-command prefixes are removed before printing |

@@ -8,7 +8,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/openctemio/ctis"
+	"github.com/openctemio/ctis/v2"
 )
 
 // Upload limits. The platform accepts at most 50 MB (decompressed) per
@@ -91,6 +91,13 @@ func (r *Run) Upload(ctx context.Context, report *ctis.Report) (*UploadResult, e
 	if report == nil {
 		return &UploadResult{}, nil
 	}
+	if !ctis.IsReportID(report.Metadata.ID) {
+		// A report built without an id gets one here, once: every retry and
+		// every part of this upload shares it.
+		c := *report
+		c.Metadata.ID = ctis.NewReportID()
+		report = &c
+	}
 	parts, err := splitReport(report, partBytes, partFindings)
 	if err != nil {
 		return nil, fmt.Errorf("upload results: %w", err)
@@ -122,7 +129,7 @@ func (u *uploader) send(ctx context.Context, p part) error {
 	}
 	u.requests++
 	reply := &uploadReply{n: len(p.report.Findings)}
-	err := u.r.call(ctx, kindUpload, "results", map[string]any{"report": p.report}, reply)
+	err := u.r.call(ctx, kindUpload, "results", p.report, reply)
 	var se *StatusError
 	if errors.As(err, &se) && se.Status == http.StatusRequestEntityTooLarge && len(p.report.Findings) > 1 {
 		left, right := halve(p)
@@ -191,13 +198,23 @@ func (u *uploader) send(ctx context.Context, p part) error {
 }
 
 // halve splits a part's findings in two; the first half keeps the
-// report's other content.
+// report's other content. The halves are documents of their own: a fresh
+// metadata.id (a receiver deduplicates on it, and the part's id with its
+// segment index is already spoken for), no segment, and partial coverage,
+// so nothing is ever called gone because of them. The segments that were
+// not split still carry the original id and count, so a receiver sees the
+// original result as incomplete and also resolves nothing from it.
 func halve(p part) (part, part) {
 	mid := len(p.report.Findings) / 2
 	left := *p.report
 	left.Findings = p.report.Findings[:mid]
 	right := withoutExtras(p.report)
 	right.Findings = p.report.Findings[mid:]
+	for _, h := range []*ctis.Report{&left, right} {
+		h.Metadata.ID = ctis.NewReportID()
+		h.Metadata.Segment = nil
+		h.Metadata.CoverageType = ctis.CoveragePartial
+	}
 	return part{&left, p.offset}, part{right, p.offset + mid}
 }
 
@@ -267,6 +284,11 @@ func splitReport(r *ctis.Report, maxBytes, maxFindings int) ([]part, error) {
 	emit(len(r.Findings))
 	if len(parts) > maxRequests {
 		return nil, fmt.Errorf("%w: it needs %d parts (at most %d)", ErrReportTooLarge, len(parts), maxRequests)
+	}
+	// The parts are the segments of one result: they share metadata.id and
+	// say where they sit, so a retry of one part is not mistaken for another.
+	for i := range parts {
+		parts[i].report.Metadata.Segment = &ctis.Segment{Index: i, Count: len(parts)}
 	}
 	return parts, nil
 }

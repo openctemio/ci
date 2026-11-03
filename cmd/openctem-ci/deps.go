@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/openctemio/ctis"
+	"github.com/openctemio/ctis/v2"
 )
 
 // maxReportDependencies bounds the dependencies one SCA report uploads. The
@@ -19,17 +19,23 @@ func keepFindingDependencies(r *ctis.Report) int {
 	if r == nil || len(r.Dependencies) == 0 {
 		return 0
 	}
-	want := map[string]bool{}
+	// refs: the dependencies findings name by dependency_ref; sources: the
+	// tool's own package ids a finding's pkg_id and dependency path name.
+	refs, sources := map[string]bool{}, map[string]bool{}
 	for i := range r.Findings {
-		v := r.Findings[i].Vulnerability
+		f := &r.Findings[i]
+		if f.DependencyRef != "" {
+			refs[f.DependencyRef] = true
+		}
+		v := f.Vulnerability
 		if v == nil {
 			continue
 		}
-		if id := r.Findings[i].SourceExtra["pkg_id"]; id != "" {
-			want[id] = true
+		if id := f.SourceExtra["pkg_id"]; id != "" {
+			sources[id] = true
 		}
 		for _, id := range v.DependencyPath {
-			want[id] = true
+			sources[id] = true
 		}
 	}
 	kept := r.Dependencies[:0]
@@ -37,7 +43,7 @@ func keepFindingDependencies(r *ctis.Report) int {
 		if len(kept) >= maxReportDependencies {
 			break
 		}
-		if want[d.ID] || d.Relationship == "root" || d.Relationship == "workspace" {
+		if refs[d.ID] || (d.SourceID != "" && sources[d.SourceID]) || d.Relationship == ctis.DependencyRoot {
 			kept = append(kept, d)
 		}
 	}

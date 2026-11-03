@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openctemio/ctis/importer"
+	"github.com/openctemio/ctis/v2/importer"
 
 	"github.com/openctemio/ci/internal/capability"
 )

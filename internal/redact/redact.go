@@ -14,8 +14,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/openctemio/ctis"
-	"github.com/openctemio/ctis/importer"
+	"github.com/openctemio/ctis/v2"
+	"github.com/openctemio/ctis/v2/importer"
 )
 
 // ErrSecretInOutput: an output still holds a raw secret value.

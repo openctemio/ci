@@ -15,21 +15,24 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"unicode"
 
-	"github.com/openctemio/ctis"
+	"github.com/openctemio/ctis/v2"
 )
 
 // IgnoreFile is the scanner ignore file read at the repository root.
 const IgnoreFile = ".semgrepignore"
 
-// Property is the report metadata property that lists the ignore file's
-// patterns.
-const Property = "ignore_file_paths"
+// ExtensionKey is the key under metadata.extensions["io.openctem"] that
+// lists the ignore file's patterns (a []string, at most MaxPatterns of at
+// most MaxPatternLen characters, none with a control character).
+const ExtensionKey = "ignore_file_paths"
 
-// MaxPatterns and maxPatternLen bound what is sent.
+// MaxPatterns and MaxPatternLen bound what is sent. They are inside the
+// receiver's own bounds (100 patterns of 500 characters).
 const (
 	MaxPatterns   = 20
-	maxPatternLen = 500
+	MaxPatternLen = 500
 	maxLineBytes  = 64 << 10
 	maxFileBytes  = 64 << 10
 )
@@ -129,10 +132,35 @@ func IgnorePatterns(root string) []string {
 	for sc.Scan() && len(out) < MaxPatterns {
 		l := strings.TrimSpace(sc.Text())
 		if l == "" || strings.HasPrefix(l, "#") || strings.HasPrefix(l, "!") || strings.HasPrefix(l, ":") ||
-			len(l) > maxPatternLen || strings.ContainsAny(l, "\x00\r") {
+			len(l) > MaxPatternLen || strings.ContainsFunc(l, unicode.IsControl) {
 			continue
 		}
 		out = append(out, l)
 	}
 	return out
+}
+
+// SetIgnorePatterns records the patterns in the report's
+// metadata.extensions["io.openctem"].ignore_file_paths, never in
+// properties (a bag receivers give no meaning). It keeps only patterns that
+// fit the bounds and returns how many it recorded.
+func SetIgnorePatterns(r *ctis.Report, pats []string) int {
+	if r == nil {
+		return 0
+	}
+	list := make([]string, 0, len(pats))
+	for _, p := range pats {
+		if len(list) >= MaxPatterns {
+			break
+		}
+		if p == "" || len(p) > MaxPatternLen || strings.ContainsFunc(p, unicode.IsControl) {
+			continue
+		}
+		list = append(list, p)
+	}
+	if len(list) == 0 {
+		return 0
+	}
+	r.Metadata.Extensions.Set(ctis.OpenCTEMNamespace, ExtensionKey, list)
+	return len(list)
 }

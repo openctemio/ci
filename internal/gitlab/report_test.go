@@ -11,7 +11,7 @@ import (
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
-	"github.com/openctemio/ctis"
+	"github.com/openctemio/ctis/v2"
 )
 
 // The schemas are the published GitLab security report schemas v15.2.5
@@ -59,11 +59,11 @@ func sample() *ctis.Report {
 		Findings: []ctis.Finding{
 			{Type: ctis.FindingTypeVulnerability, Title: "flask: DoS", Severity: "high", Fingerprint: "fp1",
 				Location: &ctis.FindingLocation{Path: "app/requirements.txt"},
-				Vulnerability: &ctis.VulnerabilityDetails{CVEID: "CVE-2018-1000656", Package: "flask",
-					AffectedVersion: "0.12.2", FixedVersion: "0.12.3", CWEIDs: []string{"CWE-20"}},
+				Vulnerability: &ctis.VulnerabilityDetails{IDs: []ctis.VulnerabilityID{{Type: ctis.VulnerabilityIDCVE, ID: "CVE-2018-1000656"}}, PackageName: "flask",
+					InstalledVersion: "0.12.2", FixedVersions: []string{"0.12.3"}, CWEIDs: []string{"CWE-20"}},
 				References: []string{"https://avd.example/cve", "javascript:alert(1)"}},
 			{Type: ctis.FindingTypeVulnerability, Title: "no location", Severity: "low",
-				Vulnerability: &ctis.VulnerabilityDetails{CVEID: "CVE-2020-1", Package: "openssl", AffectedVersion: "1.1"}},
+				Vulnerability: &ctis.VulnerabilityDetails{IDs: []ctis.VulnerabilityID{{Type: ctis.VulnerabilityIDCVE, ID: "CVE-2020-1"}}, PackageName: "openssl", InstalledVersion: "1.1"}},
 			{Type: ctis.FindingTypeVulnerability, Title: "Command injection", Severity: "critical", RuleID: "py.cmdi",
 				RuleName: "Subprocess injection", Location: &ctis.FindingLocation{Path: "app/app.py", StartLine: 13, EndLine: 13}},
 			{Type: ctis.FindingTypeSecret, Title: "Generic API key", Severity: "bogus", RuleID: "generic-api-key",

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
@@ -9,7 +10,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/openctemio/ctis"
+	"github.com/openctemio/ctis/v2"
 
 	"github.com/openctemio/ci/internal/capability"
 	"github.com/openctemio/ci/internal/ciinfo"
@@ -217,9 +218,14 @@ func uploadPending(ctx context.Context, pr *platform.Run, st status) error {
 	if err != nil {
 		return err
 	}
-	var report ctis.Report
-	if err := json.Unmarshal(b, &report); err != nil {
-		return fmt.Errorf("not a CTIS report: %w", err)
+	// Decode reads CTIS 2.x only: a report a job of an older openctem-ci left
+	// behind is refused with the error that names the upgrade.
+	report, _, err := ctis.Decode(bytes.NewReader(b))
+	if err != nil {
+		return fmt.Errorf("not a CTIS %s report: %w", ctis.SchemaVersion, err)
+	}
+	if err := report.Validate(); err != nil {
+		return fmt.Errorf("not a valid CTIS %s report: %w", ctis.SchemaVersion, err)
 	}
 	_, err = pr.Upload(ctx, &report)
 	return err
