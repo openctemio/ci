@@ -11,7 +11,7 @@ openctem-ci upload [flags] <file or directory>...
 openctem-ci upload --gate trivy.json zap.xml
 ```
 
-It is in `openctem-ci` from the first release after v0.3.1 and needs
+It is in `openctem-ci` from v0.4.0 and needs
 OpenCTEM v0.11.0 or later.
 
 ## Identity
