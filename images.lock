@@ -1,8 +1,8 @@
-# The images release v0.3.1 runs (scripts/pin-images.sh). The release
-# tag points v0.3.1 and its major tag at exactly these digests.
-version v0.3.1
-ci sha256:bc83ea222e9ad095c9dddc71943351650e4e43dcb9c3631a6939f94c315f057b
-ci-opengrep sha256:7aa9cc209903e0c145f60ed68f5590055b0fde8b421785cc3c200cfe73fd2718
-ci-semgrep sha256:fe99564fe63b1f346b132332882324b1c60c74ef1fe8ca2e32cd81fdb742cc20
-ci-trivy sha256:1667696102bc89dc2802cbd54e3f92fbf2eb92341b4ff70ecb463bc653c7aae5
-ci-betterleaks sha256:c5a54cb9dce2f64533e2312cb5f6c7f825a73de8df7e35ad3a981a9a7653f9fd
+# The images release v0.4.0 runs (scripts/pin-images.sh). The release
+# tag points v0.4.0 and its major tag at exactly these digests.
+version v0.4.0
+ci sha256:e75ea43f85bc066a8735857ac58534fef0670b5c1e7862e9115267f8d611b449
+ci-opengrep sha256:83979a8f1f2a11a89ef791a18211dbe0932d622a574e5f84a01ba920f8176a2b
+ci-semgrep sha256:975dd3d0df432ae01f4589e18627bbd83ea287a5303edc91b49b96fbf644cdc0
+ci-trivy sha256:cd275dfabe86cb0bd4e1968ea3e4cc3d8fcab46178904039e7a56ffaf0192119
+ci-betterleaks sha256:0feeefc0e03ff21777729df8a29f1876d58de64efa022d6e0396bb603e4e3f8d
