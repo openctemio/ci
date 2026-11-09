@@ -7,7 +7,7 @@
 # rules are the OpenCTEM rules pack, as in ci-opengrep: the image never
 # falls back to registry rules.
 
-FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS build
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27-alpine@sha256:fa3d596898d9f126af7c01d14ee7597bab3f39cccf392ef36b69fe77cd681f18 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
@@ -75,10 +75,10 @@ RUN f="sast-rules-${SAST_RULES_VERSION}.tar.gz"; \
     grep -qx "${SAST_RULES_VERSION}" /opt/openctem/sast-rules/VERSION; \
     chmod -R a+rX,go-w /opt/openctem/sast-rules
 
-FROM ghcr.io/aquasecurity/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c AS trivy
+FROM ghcr.io/aquasecurity/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb AS trivy
 RUN cp "$(command -v trivy)" /trivy && /trivy --version
 
-FROM ghcr.io/betterleaks/betterleaks:v1.9.0@sha256:e3b95b0db6c2735db17165c009b0ad6d9cef34fb4578659232b98f69d7346cac AS betterleaks
+FROM ghcr.io/betterleaks/betterleaks:v1.10.0@sha256:c6dfa75145fe5b31fdaf02feff18a73f1e11df8ca04876522f87f857656c83ca AS betterleaks
 RUN cp "$(command -v betterleaks)" /betterleaks && /betterleaks version
 
 FROM docker.io/library/alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
