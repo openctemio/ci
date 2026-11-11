@@ -5,7 +5,7 @@
 # Every base image is pinned by digest; Dependabot (docker) bumps tag and
 # digest together. The tool comes from its official image, copied by digest.
 
-FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS build
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27-alpine@sha256:fa3d596898d9f126af7c01d14ee7597bab3f39cccf392ef36b69fe77cd681f18 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
@@ -19,7 +19,7 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
     go build -trimpath -ldflags="-s -w -X main.Version=${VERSION}" -o /out/openctem-ci ./cmd/openctem-ci
 
 # betterleaks v1: v2 changes the JSON report the importer reads.
-FROM ghcr.io/betterleaks/betterleaks:v1.9.0@sha256:e3b95b0db6c2735db17165c009b0ad6d9cef34fb4578659232b98f69d7346cac AS betterleaks
+FROM ghcr.io/betterleaks/betterleaks:v1.10.0@sha256:c6dfa75145fe5b31fdaf02feff18a73f1e11df8ca04876522f87f857656c83ca AS betterleaks
 RUN cp "$(command -v betterleaks)" /betterleaks && /betterleaks version
 
 FROM docker.io/library/alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
