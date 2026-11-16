@@ -25,7 +25,7 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
 
 FROM ghcr.io/sigstore/cosign/cosign:v3.1.4@sha256:0f06154836d2de34f887a5c273506d52ca43edaa1d9e53e6510fa78a48f69c2d AS cosign
 
-FROM docker.io/library/alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS opengrep
+FROM docker.io/library/alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS opengrep
 ARG TARGETARCH
 ARG OPENGREP_VERSION=1.31.0
 ARG OPENGREP_SHA256_AMD64=02c9fba481611aa0664bc79ccf7ce59e9e334b76af8921c80b2f738d17fabf9b
@@ -57,7 +57,7 @@ RUN case "${TARGETARCH}" in \
 # The OpenCTEM rules pack (github.com/openctemio/sast-rules): a release
 # bundle whose cosign keyless signature must verify for the pack's release
 # workflow at exactly this tag. It is the image's default sast rules.
-FROM docker.io/library/alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS rules
+FROM docker.io/library/alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS rules
 ARG SAST_RULES_VERSION=0.1.0
 ARG SAST_RULES_SHA256=6bcd18f7d6f65fbbccc0d965a86010e10da7d8f9e217a39597fe52e3fef4df6d
 COPY --from=cosign /ko-app/cosign /usr/local/bin/cosign
@@ -78,7 +78,7 @@ RUN f="sast-rules-${SAST_RULES_VERSION}.tar.gz"; \
     grep -qx "${SAST_RULES_VERSION}" /opt/openctem/sast-rules/VERSION; \
     chmod -R a+rX,go-w /opt/openctem/sast-rules
 
-FROM docker.io/library/alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
+FROM docker.io/library/alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
 LABEL org.opencontainers.image.title="openctem-ci-opengrep" \
       org.opencontainers.image.description="OpenCTEM CI scanning: opengrep (sast) and openctem-ci" \
       org.opencontainers.image.source="https://github.com/openctemio/ci" \

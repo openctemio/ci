@@ -19,10 +19,10 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
     go build -trimpath -ldflags="-s -w -X main.Version=${VERSION}" -o /out/openctem-ci ./cmd/openctem-ci
 
 # betterleaks v1: v2 changes the JSON report the importer reads.
-FROM ghcr.io/betterleaks/betterleaks:v1.10.0@sha256:c6dfa75145fe5b31fdaf02feff18a73f1e11df8ca04876522f87f857656c83ca AS betterleaks
+FROM ghcr.io/betterleaks/betterleaks:v1.10.1@sha256:f345c1ac502abc51ec334c3d815ad18a79fb1509555fc4496b2cb88e760681b3 AS betterleaks
 RUN cp "$(command -v betterleaks)" /betterleaks && /betterleaks version
 
-FROM docker.io/library/alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
+FROM docker.io/library/alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
 LABEL org.opencontainers.image.title="openctem-ci-betterleaks" \
       org.opencontainers.image.description="OpenCTEM CI scanning: betterleaks (secrets) and openctem-ci" \
       org.opencontainers.image.source="https://github.com/openctemio/ci" \
